@@ -1,11 +1,12 @@
 # CMPSC473 Honors Option Project - File System in User Space
 
-This project implements a FAT32-based file system with a user-space tool to modify directories and files.
+This project implements an ISO9660-based file system that includes an ISO parser and an ISO generator.
 
 ## TODO
-- [ ] Blank Todo
+* [ ] Parser
+  * [ ] TODO Item 1
+* [ ] Generator
+  * [ ] TODO Item 2
 
 ## References
-- https://wiki.osdev.org/FAT#Creating_a_fresh_FAT_filesystem
-- http://download.microsoft.com/download/1/6/1/161ba512-40e2-4cc9-843a-923143f3456c/fatgen103.doc
-- http://www.osdever.net/documents/fatgen103.pdf (Working Link)
+- [https://wiki.osdev.org/FAT#Creating_a_fresh_FAT_filesystem](https://wiki.osdev.org/ISO_9660)
