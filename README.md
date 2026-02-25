@@ -4,7 +4,7 @@ This project implements an ISO9660-based file system that includes an ISO parser
 
 ## TODO
 * [ ] ISO Generator
-  * [ ] Example Directory Layout for Presentation and Parsing
+  * [x] Example Directory Layout for Presentation and Parsing
   * [ ] `mkisofs` command (-r for Rock Ridge ext., -J for Joliet)
 * [ ] ISO Parser
   * [ ] open(path)
