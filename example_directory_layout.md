@@ -93,7 +93,7 @@ test_data/
 
 **Create ISO:**
 ```bash
-genisoimage -r -J -V "TEST_DATA" -o test.iso test_data/
+mkisofs -r -J -V "TEST_DATA" -o test.iso test_data/
 ```
 
 **Expected ISO Size:** Approximately 30–50 KB (depends on ISO overhead)
