@@ -11,7 +11,7 @@
 
 #include "parser.h"
 
-// #define DEBUG
+#define DEBUG
 
 int fd = -1;
 
@@ -28,7 +28,7 @@ int fs_open(char* path) {
        exit(1);
     }
     #ifdef DEBUG 
-        printf("Opened FS: %d\n", fd);
+        printf("Opened FS: %d (FD)\n", fd);
     #endif
 }
 
@@ -38,6 +38,9 @@ int fs_close() {
         perror("close");
         exit(1);
     }
+
+    fd = -1; // Set fd to -1 after closing
+    
     #ifdef DEBUG 
         printf("Closed FS\n");
     #endif
