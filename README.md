@@ -7,11 +7,11 @@ This project implements an ISO9660-based file system that includes an ISO parser
   * [x] Example Directory Layout for Presentation and Parsing
   * [x] `mkisofs` command (-r for Rock Ridge ext., -J for Joliet)
 * [ ] ISO Parser
-  * [ ] open(path)
-  * [ ] close(iso)
-  * [ ] read_sector(iso, sector, count, buf)
-  * [ ] parse_pvd(iso)
-  * [ ] list_dir(iso, path, entries)
+  * [x] open(path)
+  * [x] close()
+  * [ ] read_sector(sector, count, buf)
+  * [ ] parse_pvd()
+  * [ ] list_dir(path, entries)
   * [ ] read_file(path, buf, size)
   * [ ] resolve_path(path, out_record)
   * [ ] parse_dir_record(data, offset, out_record)
