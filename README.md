@@ -23,3 +23,30 @@ This project implements an ISO9660-based file system that includes an ISO parser
 
 ## References
 - [https://wiki.osdev.org/FAT#Creating_a_fresh_FAT_filesystem](https://wiki.osdev.org/ISO_9660)
+
+## Installation & Usage
+
+### Prerequisites
+- GCC
+- Make
+- `genisoimage` (or `mkisofs`)
+
+**Ubuntu / WSL:**
+```bash
+sudo apt-get update && sudo apt-get install -y gcc make genisoimage
+```
+
+### Build
+```bash
+make
+```
+
+### Generate a test ISO
+```bash
+genisoimage -r -J -V "TEST_FS" -o fs.iso test_fs/
+```
+
+### Run
+```bash
+./driver fs.iso
+```
