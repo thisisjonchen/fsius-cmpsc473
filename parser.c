@@ -148,22 +148,42 @@ int parse_pvd(void) {
 /* ------------------------------------------------------------------ */
 /*  parse_dir_record – decode one directory record from raw bytes     */
 /* ------------------------------------------------------------------ */
-static int parse_dir_record(const uint8_t *data, uint32_t offset,
-                            dir_entry_t *entry) {
+int parse_dir_record(const uint8_t *data, uint32_t offset,
+                     dir_entry_t *out_record) {
+    if (data == NULL || out_record == NULL) {
+        return -1;
+    }
+
     const uint8_t *rec = data + offset;
 
-    entry->length = rec[0];
-    if (entry->length == 0)
+    uint8_t rec_len = rec[0];
+    if (rec_len == 0) {
         return -1;  /* zero-length marks end of used space in this sector */
+    }
+    if (rec_len < 34) {
+        return -1;  /* shortest valid ISO 9660 directory record */
+    }
 
-    memcpy(&entry->extent_lba,  rec + 2,  4);   /* LE */
-    memcpy(&entry->data_length, rec + 10, 4);   /* LE */
-    entry->flags    = rec[25];
-    entry->name_len = rec[32];
+    uint8_t file_id_len = rec[32];
+    if ((uint32_t)(33 + file_id_len) > rec_len) {
+        return -1;
+    }
+
+    out_record->length = rec_len;
+
+    memcpy(&out_record->extent_lba,  rec + 2,  4);   /* LE */
+    memcpy(&out_record->data_length, rec + 10, 4);   /* LE */
+    out_record->flags    = rec[25];
+    out_record->name_len = file_id_len;
 
     /* Copy the ISO 9660 file identifier */
-    memcpy(entry->name, rec + 33, entry->name_len);
-    entry->name[entry->name_len] = '\0';
+    uint8_t copied_name_len = file_id_len;
+    if (copied_name_len >= MAX_NAME_LEN) {
+        copied_name_len = MAX_NAME_LEN - 1;
+    }
+    memcpy(out_record->name, rec + 33, copied_name_len);
+    out_record->name[copied_name_len] = '\0';
+    out_record->name_len = copied_name_len;
 
     /*
      * Look for a Rock Ridge "NM" (Alternate Name) System Use entry.
@@ -171,17 +191,17 @@ static int parse_dir_record(const uint8_t *data, uint32_t offset,
      * optional padding byte (padding is present when name_len is even
      * so that the fixed fields end on an even offset).
      */
-    int su_start = 33 + entry->name_len;
-    if (entry->name_len % 2 == 0)
+    int su_start = 33 + file_id_len;
+    if (file_id_len % 2 == 0)
         su_start++;   /* padding byte */
 
     int su_off = su_start;
-    while (su_off + 4 <= entry->length) {
+    while (su_off + 4 <= rec_len) {
         uint8_t sig1   = rec[su_off];
         uint8_t sig2   = rec[su_off + 1];
         uint8_t su_len = rec[su_off + 2];
 
-        if (su_len < 4 || su_off + su_len > entry->length)
+        if (su_len < 4 || su_off + su_len > rec_len)
             break;
 
         /* NM entry: signature "NM", version at +3, flags at +4, name at +5 */
@@ -189,9 +209,12 @@ static int parse_dir_record(const uint8_t *data, uint32_t offset,
             uint8_t nm_flags = rec[su_off + 4];
             if (nm_flags == 0 && su_len > 5) {
                 int nm_name_len = su_len - 5;
-                memcpy(entry->name, rec + su_off + 5, nm_name_len);
-                entry->name[nm_name_len] = '\0';
-                entry->name_len = nm_name_len;
+                if (nm_name_len >= MAX_NAME_LEN) {
+                    nm_name_len = MAX_NAME_LEN - 1;
+                }
+                memcpy(out_record->name, rec + su_off + 5, nm_name_len);
+                out_record->name[nm_name_len] = '\0';
+                out_record->name_len = (uint8_t)nm_name_len;
             }
             break;                               /* use first NM found */
         }
@@ -203,14 +226,20 @@ static int parse_dir_record(const uint8_t *data, uint32_t offset,
      * If no Rock Ridge name was found, clean up the plain ISO 9660
      * identifier: strip the ";1" version suffix and any trailing dot.
      */
-    int nlen = strlen(entry->name);
-    if (nlen >= 2 && entry->name[nlen - 1] >= '0' && entry->name[nlen - 1] <= '9'
-                   && entry->name[nlen - 2] == ';') {
-        entry->name[nlen - 2] = '\0';
-        nlen -= 2;
-    }
-    if (nlen > 0 && entry->name[nlen - 1] == '.') {
-        entry->name[nlen - 1] = '\0';
+    if (!(out_record->name_len == 1 &&
+          (out_record->name[0] == '\0' || out_record->name[0] == '\x01'))) {
+        int nlen = (int)strlen(out_record->name);
+        if (nlen >= 2 && out_record->name[nlen - 1] >= '0' && out_record->name[nlen - 1] <= '9'
+                       && out_record->name[nlen - 2] == ';') {
+            out_record->name[nlen - 2] = '\0';
+            nlen -= 2;
+        }
+        if (nlen > 0 && out_record->name[nlen - 1] == '.') {
+            out_record->name[nlen - 1] = '\0';
+        }
+        out_record->name_len = (uint8_t)strlen(out_record->name);
+    } else {
+        out_record->name_len = 1;
     }
 
     return 0;
@@ -266,52 +295,150 @@ static int read_dir_entries(uint32_t lba, uint32_t data_len,
 }
 
 /* ------------------------------------------------------------------ */
-/*  list_dir – list entries in the directory identified by `path`     */
-/*  Returns the number of entries written to `entries`, or -1.        */
+/*  resolve_path – resolve file or directory path to its dir record   */
 /* ------------------------------------------------------------------ */
-int list_dir(const char *path, dir_entry_t *entries, int max_entries) {
-    uint32_t dir_lba = pvd.root_record.extent_lba;
-    uint32_t dir_len = pvd.root_record.data_length;
-
-    /* Root directory shortcut */
-    if (path == NULL || path[0] == '\0' ||
-        (path[0] == '/' && path[1] == '\0')) {
-        return read_dir_entries(dir_lba, dir_len, entries, max_entries);
+int resolve_path(const char *path, dir_entry_t *out_record) {
+    if (out_record == NULL) {
+        return -1;
     }
 
-    /* Walk each path component to resolve the target directory */
+    dir_entry_t current = pvd.root_record;
+
+    if (path == NULL || path[0] == '\0' ||
+        (path[0] == '/' && path[1] == '\0')) {
+        *out_record = current;
+        return 0;
+    }
+
     char pathcopy[1024];
     strncpy(pathcopy, path, sizeof(pathcopy) - 1);
     pathcopy[sizeof(pathcopy) - 1] = '\0';
 
     char *saveptr = NULL;
-    char *token   = strtok_r(pathcopy, "/", &saveptr);
+    char *token = strtok_r(pathcopy, "/", &saveptr);
+    if (token == NULL) {
+        *out_record = current;
+        return 0;
+    }
 
     while (token != NULL) {
         dir_entry_t tmp[MAX_DIR_ENTRIES];
-        int n = read_dir_entries(dir_lba, dir_len, tmp, MAX_DIR_ENTRIES);
-        if (n < 0)
+        int n = read_dir_entries(current.extent_lba, current.data_length,
+                                 tmp, MAX_DIR_ENTRIES);
+        if (n < 0) {
             return -1;
+        }
 
         int found = 0;
+        dir_entry_t matched = {0};
         for (int i = 0; i < n; i++) {
-            if (strcmp(tmp[i].name, token) == 0 &&
-                (tmp[i].flags & 0x02)) {           /* must be a directory */
-                dir_lba = tmp[i].extent_lba;
-                dir_len = tmp[i].data_length;
-                found   = 1;
+            if (strcmp(tmp[i].name, token) == 0) {
+                matched = tmp[i];
+                found = 1;
                 break;
             }
         }
 
         if (!found) {
-            fprintf(stderr, "list_dir: '%s' not found in path\n", token);
+            fprintf(stderr, "resolve_path: '%s' not found\n", token);
             return -1;
         }
 
         token = strtok_r(NULL, "/", &saveptr);
+        if (token != NULL && !(matched.flags & 0x02)) {
+            fprintf(stderr, "resolve_path: '%s' is not a directory\n", matched.name);
+            return -1;
+        }
+
+        current = matched;
     }
 
-    return read_dir_entries(dir_lba, dir_len, entries, max_entries);
+    *out_record = current;
+    return 0;
+}
+
+/* ------------------------------------------------------------------ */
+/*  list_dir – list entries in the directory identified by `path`     */
+/*  Returns the number of entries written to `entries`, or -1.        */
+/* ------------------------------------------------------------------ */
+int list_dir(const char *path, dir_entry_t *entries, int max_entries) {
+    if (entries == NULL || max_entries <= 0) {
+        return -1;
+    }
+
+    /* Root directory shortcut */
+    if (path == NULL || path[0] == '\0' ||
+        (path[0] == '/' && path[1] == '\0')) {
+        return read_dir_entries(pvd.root_record.extent_lba,
+                                pvd.root_record.data_length,
+                                entries,
+                                max_entries);
+    }
+
+    dir_entry_t target;
+    if (resolve_path(path, &target) < 0) {
+        return -1;
+    }
+
+    if (!(target.flags & 0x02)) {
+        fprintf(stderr, "list_dir: '%s' is not a directory\n", path);
+        return -1;
+    }
+
+    return read_dir_entries(target.extent_lba,
+                            target.data_length,
+                            entries,
+                            max_entries);
+}
+
+/* ------------------------------------------------------------------ */
+/*  read_file – read file bytes from ISO image into caller buffer     */
+/*  Returns bytes copied, or -1 on error.                             */
+/* ------------------------------------------------------------------ */
+int read_file(const char *path, void *buf, uint32_t size) {
+    if (path == NULL || buf == NULL) {
+        return -1;
+    }
+
+    if (size == 0) {
+        return 0;
+    }
+
+    dir_entry_t file_record;
+    if (resolve_path(path, &file_record) < 0) {
+        return -1;
+    }
+
+    if (file_record.flags & 0x02) {
+        fprintf(stderr, "read_file: '%s' is a directory\n", path);
+        return -1;
+    }
+
+    uint32_t bytes_to_copy = size;
+    if (bytes_to_copy > file_record.data_length) {
+        bytes_to_copy = file_record.data_length;
+    }
+
+    if (bytes_to_copy == 0) {
+        return 0;
+    }
+
+    uint32_t sectors = (file_record.data_length + SECTOR_SIZE - 1) / SECTOR_SIZE;
+    size_t raw_size = (size_t)sectors * SECTOR_SIZE;
+    uint8_t *raw = malloc(raw_size);
+    if (raw == NULL) {
+        perror("malloc");
+        return -1;
+    }
+
+    if (read_sector(file_record.extent_lba, sectors, raw) < 0) {
+        free(raw);
+        return -1;
+    }
+
+    memcpy(buf, raw, bytes_to_copy);
+    free(raw);
+
+    return (int)bytes_to_copy;
 }
 

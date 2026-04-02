@@ -35,6 +35,9 @@ int fs_open(const char *path);
 int fs_close(void);
 int read_sector(uint32_t sector, uint32_t count, void *buf);
 int parse_pvd(void);
+int parse_dir_record(const uint8_t *data, uint32_t offset, dir_entry_t *out_record);
+int resolve_path(const char *path, dir_entry_t *out_record);
 int list_dir(const char *path, dir_entry_t *entries, int max_entries);
+int read_file(const char *path, void *buf, uint32_t size);
 
 #endif

@@ -12,9 +12,9 @@ This project implements an ISO9660-based file system that includes an ISO parser
   * [x] read_sector(sector, count, buf)
   * [x] parse_pvd()
   * [x] list_dir(path, entries)
-  * [ ] read_file(path, buf, size)
-  * [ ] resolve_path(path, out_record)
-  * [ ] parse_dir_record(data, offset, out_record)
+  * [x] read_file(path, buf, size)
+  * [x] resolve_path(path, out_record)
+  * [x] parse_dir_record(data, offset, out_record)
   * [ ] ...misc. helpers
 * [ ] ISO Wrapper (interface for using Parser and Generator)
   * [ ] Build Generator

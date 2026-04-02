@@ -4,6 +4,7 @@
  */
 
 #include <stdio.h>
+#include <string.h>
 
 #include "parser.h"
 
@@ -44,6 +45,41 @@ int main(int argc, char *argv[]) {
     n = list_dir("/programs", entries, MAX_DIR_ENTRIES);
     if (n >= 0)
         print_entries("/programs", entries, n);
+
+    /* Resolve a file path into a directory record */
+    dir_entry_t record;
+    if (resolve_path("/documents/todo-list.txt", &record) == 0) {
+        printf("\nresolve_path('/documents/todo-list.txt') -> ");
+        printf("name=%s size=%u lba=%u flags=0x%02x\n",
+               record.name, record.data_length, record.extent_lba, record.flags);
+    }
+
+    /* Read the first bytes of a file */
+    char file_buf[128];
+    int bytes = read_file("/documents/todo-list.txt", file_buf, sizeof(file_buf) - 1);
+    if (bytes >= 0) {
+        file_buf[bytes] = '\0';
+        printf("read_file('/documents/todo-list.txt') -> %d bytes\n", bytes);
+        printf("preview: %.80s\n", file_buf);
+    }
+
+    /* Parse one raw directory record from the root directory sector */
+    uint8_t root_sector[SECTOR_SIZE];
+    if (read_sector(pvd.root_record.extent_lba, 1, root_sector) > 0) {
+        uint32_t offset = 0;
+        int skipped = 0;
+
+        while (offset < SECTOR_SIZE && skipped < 2 && root_sector[offset] != 0) {
+            offset += root_sector[offset];
+            skipped++;
+        }
+
+        if (offset < SECTOR_SIZE && root_sector[offset] != 0 &&
+            parse_dir_record(root_sector, offset, &record) == 0) {
+            printf("parse_dir_record(root, offset=%u) -> name=%s size=%u lba=%u\n",
+                   offset, record.name, record.data_length, record.extent_lba);
+        }
+    }
 
     fs_close();
     return 0;
