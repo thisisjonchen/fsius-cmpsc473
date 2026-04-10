@@ -12,7 +12,7 @@
 
 #include "parser.h"
 
-#define DEBUG
+ // #define DEBUG
 
 int fd = -1;
 pvd_t pvd;
