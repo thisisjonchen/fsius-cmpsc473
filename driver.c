@@ -27,12 +27,16 @@ static void rhelp() {
 static void ropen(char *input, char *image, char *path) {
     char *cmd = strsep(&input, " ");
     char *iso_path = strsep(&input, " ");
+    if (strcmp(image, "") != 0) {
+        printf("Error: Image already open\n");
+        return;
+    }
+
     if (fs_open(iso_path) < 0) {
         printf("Error: Unable to open specified ISO9960 image\n");
         return;
     }
 
-    parse_pvd();
     if (parse_pvd() < 0) {
         fs_close();
         printf("Error: Unable to parse Primary Volume Descriptor\n");
@@ -49,18 +53,44 @@ static void rls(dir_entry_t *entries, char *path) {
     if (n >= 0) print_entries(path, entries, n);
 }
 
+static void rcd(char *input, dir_entry_t *entries, char *path)  {
+    list_dir(path, entries, MAX_DIR_ENTRIES);
+    char *cmd = strsep(&input, " ");
+    char *subpath = strsep(&input, " ");
+    if (subpath != NULL) {
+        if (strcmp(subpath, "..") == 0) {
+            char *target = strrchr(path, '/');
+            printf("%s", target);
+            if (strcmp(target, path) == 0) strcpy(path, "/");
+            else path[strlen(path) - strlen(target)] = '\0';
+            return;
+        }
+        else {
+            for (int i = 0; i < MAX_DIR_ENTRIES; i++) {
+                if (strlen(entries[i].name) > 0 && strcmp(entries[i].name, subpath) == 0 && (entries[i].flags & 0x02)) {
+                    if (strlen(path) > 1) strcat(path, "/");
+                    strcat(path, subpath);
+                    return;
+                }
+            }
+        }
+    }
+
+    printf("Error: Directory not found\n");
+}
+
 int main() {
     system("clear");
-    printf("CMPSC473 Honors Project: ISO9960 FS Runner | By Jonathan Chen and Binay Kumar\n");
+    printf("CMPSC473 Honors Project: ISO9960 FS CLI | By Jonathan Chen and Binay Dalai\n");
 
     char input[100];
-    char path[100] = "";
-    char image[100] = "";
+    char path[100];
+    char image[100];
     dir_entry_t entries[MAX_DIR_ENTRIES];
 
     while (1) {
         if (strcmp(image, "") == 0) printf("\n > ");
-        else printf("\n(%s: %s) > ", image, path);
+        else printf("\n(%s) %s > ", image, path);
         if (fgets(input, sizeof(input), stdin) == NULL) break;
 
         input[strcspn(input, "\n")] = 0;
@@ -69,6 +99,7 @@ int main() {
         else if (strcmp(input, "help") == 0) rhelp();
         else if (strstr(input, "open") != NULL) ropen(input, image, path);
         else if (strcmp(input, "ls") == 0) rls(entries, path);
+        else if (strstr(input, "cd") != NULL) rcd(input, entries, path);
         else if (strlen(input) > 0) printf("Unknown command: %s\n", input);
     }
 
