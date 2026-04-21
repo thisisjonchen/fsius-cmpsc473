@@ -6,7 +6,7 @@ This project implements an ISO9660-based file system that includes an ISO parser
 * [x] ISO Generator
   * [x] Example Directory Layout for Presentation and Parsing
   * [x] `mkisofs` command (-r for Rock Ridge ext., -J for Joliet)
-* [ ] ISO Parser
+* [x] ISO Parser
   * [x] fs_open(path)
   * [x] fs_close()
   * [x] read_sector(sector, count, buf)
@@ -15,14 +15,14 @@ This project implements an ISO9660-based file system that includes an ISO parser
   * [x] read_file(path, buf, size)
   * [x] resolve_path(path, out_record)
   * [x] parse_dir_record(data, offset, out_record)
-  * [ ] ...misc. helpers
-* [ ] ISO Wrapper (interface for using Parser and Generator)
-  * [ ] Build Generator
-  * [ ] Build Parser
-   
+  * [x] ...misc. helpers (`fs_stat`, `iso_join_path`, `iso_normalize_path`, `iso_canonicalize_path`, case-insensitive name matching)
+* [x] ISO Wrapper (interface for using Parser and Generator)
+  * [x] Build Generator (`libgenerator.a`, wraps `genisoimage`/`mkisofs`)
+  * [x] Build Parser (`libparser.a`)
+
 
 ## References
-- [https://wiki.osdev.org/FAT#Creating_a_fresh_FAT_filesystem](https://wiki.osdev.org/ISO_9660)
+- [OSDev: ISO 9660](https://wiki.osdev.org/ISO_9660)
 
 ## Installation & Usage
 
@@ -42,11 +42,26 @@ make
 ```
 
 ### Generate a test ISO
+Either directly:
 ```bash
 genisoimage -r -J -V "TEST_FS" -o fs.iso test_fs/
+```
+...or from inside the CLI (uses the same flags under the hood):
+```
+> mkiso test_fs fs.iso TEST_FS
 ```
 
 ### Run
 ```bash
-./driver fs.iso
+./driver
 ```
+Then at the prompt:
+```
+> open fs.iso
+(fs.iso) / > ls
+(fs.iso) / > cd documents
+(fs.iso) /documents > cat todo-list.txt
+(fs.iso) /documents > close
+> exit
+```
+Type `help` for the full command list.

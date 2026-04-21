@@ -5,12 +5,21 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>   /* strcasecmp */
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
 #include "parser.h"
+
+/* Name equality used by resolve_path. ISO9660 short names are always
+ * uppercased in the directory record; Rock Ridge "NM" entries preserve
+ * natural case. A case-insensitive compare works correctly for both
+ * and matches the ergonomics users expect from a shell-like CLI. */
+static int iso_name_eq(const char *a, const char *b) {
+    return strcasecmp(a, b) == 0;
+}
 
  // #define DEBUG
 
@@ -332,7 +341,7 @@ int resolve_path(const char *path, dir_entry_t *out_record) {
         int found = 0;
         dir_entry_t matched = {0};
         for (int i = 0; i < n; i++) {
-            if (strcmp(tmp[i].name, token) == 0) {
+            if (iso_name_eq(tmp[i].name, token)) {
                 matched = tmp[i];
                 found = 1;
                 break;
@@ -442,3 +451,108 @@ int read_file(const char *path, void *buf, uint32_t size) {
     return (int)bytes_to_copy;
 }
 
+/* ------------------------------------------------------------------ */
+/*  Misc. helpers                                                     */
+/* ------------------------------------------------------------------ */
+
+/*
+ * fs_stat - convenience public wrapper.
+ *
+ * Normalizes `path` (collapses "."/".." and duplicate slashes) and then
+ * resolves it to a directory record. Callers that want the raw
+ * un-normalized behavior can still call resolve_path directly.
+ */
+int fs_stat(const char *path, dir_entry_t *out_record) {
+    if (out_record == NULL) return -1;
+
+    char normalized[1024];
+    if (path == NULL || path[0] == '\0') {
+        strcpy(normalized, "/");
+    } else {
+        iso_normalize_path(path, normalized, sizeof(normalized));
+    }
+    return resolve_path(normalized, out_record);
+}
+
+void iso_join_path(const char *cwd, const char *arg,
+                   char *out, size_t outsize) {
+    if (out == NULL || outsize == 0) return;
+
+    if (arg == NULL || arg[0] == '\0') {
+        snprintf(out, outsize, "%s",
+                 (cwd && cwd[0]) ? cwd : "/");
+        return;
+    }
+
+    if (arg[0] == '/') {
+        snprintf(out, outsize, "%s", arg);
+        return;
+    }
+
+    if (cwd == NULL || cwd[0] == '\0' ||
+        (cwd[0] == '/' && cwd[1] == '\0')) {
+        snprintf(out, outsize, "/%s", arg);
+    } else {
+        snprintf(out, outsize, "%s/%s", cwd, arg);
+    }
+}
+
+/*
+ * iso_normalize_path - collapse "." / ".." / "//" in an absolute path.
+ *
+ * Implementation: tokenize on '/', push non-dot segments onto a stack,
+ * pop on "..", drop ".". Rebuild with leading '/'. Relative inputs are
+ * treated as if they had an implicit leading '/'.
+ */
+void iso_normalize_path(const char *in, char *out, size_t outsize) {
+    if (out == NULL || outsize == 0) return;
+
+    if (in == NULL || in[0] == '\0') {
+        snprintf(out, outsize, "/");
+        return;
+    }
+
+    /* Working buffer that strtok_r can mutate. */
+    char buf[1024];
+    snprintf(buf, sizeof(buf), "%s", in);
+
+    const char *segs[128];
+    int nseg = 0;
+
+    char *save = NULL;
+    char *tok  = strtok_r(buf, "/", &save);
+    while (tok != NULL) {
+        if (strcmp(tok, ".") == 0) {
+            /* drop */
+        } else if (strcmp(tok, "..") == 0) {
+            if (nseg > 0) nseg--;
+        } else if (nseg < (int)(sizeof(segs) / sizeof(segs[0]))) {
+            segs[nseg++] = tok;
+        }
+        tok = strtok_r(NULL, "/", &save);
+    }
+
+    if (nseg == 0) {
+        snprintf(out, outsize, "/");
+        return;
+    }
+
+    size_t off = 0;
+    for (int i = 0; i < nseg; i++) {
+        int w = snprintf(out + off, (off < outsize) ? outsize - off : 0,
+                         "/%s", segs[i]);
+        if (w < 0) break;
+        off += (size_t)w;
+        if (off >= outsize) {
+            out[outsize - 1] = '\0';
+            return;
+        }
+    }
+}
+
+void iso_canonicalize_path(const char *cwd, const char *arg,
+                           char *out, size_t outsize) {
+    char joined[1024];
+    iso_join_path(cwd, arg, joined, sizeof(joined));
+    iso_normalize_path(joined, out, outsize);
+}
