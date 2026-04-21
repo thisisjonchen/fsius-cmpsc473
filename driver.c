@@ -206,7 +206,12 @@ static int tokenize(char *input, char **argv, int max) {
 }
 
 int main(void) {
-    system("clear");
+    /* ANSI clear screen + scrollback. Avoids forking a shell for
+     * `clear` and works on any ANSI-capable terminal (Linux, WSL,
+     * macOS, modern Windows Terminal / VS Code integrated terminal). */
+    fputs("\033[H\033[2J\033[3J", stdout);
+    fflush(stdout);
+
     printf("CMPSC473 Honors Project: ISO9960 FS CLI | By Jonathan Chen and Binay Dalai\n");
     printf("Type 'help' for a list of commands.\n");
 

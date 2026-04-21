@@ -185,14 +185,16 @@ int parse_dir_record(const uint8_t *data, uint32_t offset,
     out_record->flags    = rec[25];
     out_record->name_len = file_id_len;
 
-    /* Copy the ISO 9660 file identifier */
-    uint8_t copied_name_len = file_id_len;
+    /* Copy the ISO 9660 file identifier. copied_name_len is size_t
+     * (rather than uint8_t) so the MAX_NAME_LEN bound stays meaningful
+     * if MAX_NAME_LEN is ever lowered below 256. */
+    size_t copied_name_len = file_id_len;
     if (copied_name_len >= MAX_NAME_LEN) {
         copied_name_len = MAX_NAME_LEN - 1;
     }
     memcpy(out_record->name, rec + 33, copied_name_len);
     out_record->name[copied_name_len] = '\0';
-    out_record->name_len = copied_name_len;
+    out_record->name_len = (uint8_t)copied_name_len;
 
     /*
      * Look for a Rock Ridge "NM" (Alternate Name) System Use entry.
