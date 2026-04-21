@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>   /* strcasecmp */
+#include <strings.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
@@ -227,7 +227,7 @@ int parse_dir_record(const uint8_t *data, uint32_t offset,
                 out_record->name[nm_name_len] = '\0';
                 out_record->name_len = (uint8_t)nm_name_len;
             }
-            break;                               /* use first NM found */
+            break;
         }
 
         su_off += su_len;
@@ -334,8 +334,7 @@ int resolve_path(const char *path, dir_entry_t *out_record) {
 
     while (token != NULL) {
         dir_entry_t tmp[MAX_DIR_ENTRIES];
-        int n = read_dir_entries(current.extent_lba, current.data_length,
-                                 tmp, MAX_DIR_ENTRIES);
+        int n = read_dir_entries(current.extent_lba, current.data_length, tmp, MAX_DIR_ENTRIES);
         if (n < 0) {
             return -1;
         }
@@ -541,8 +540,7 @@ void iso_normalize_path(const char *in, char *out, size_t outsize) {
 
     size_t off = 0;
     for (int i = 0; i < nseg; i++) {
-        int w = snprintf(out + off, (off < outsize) ? outsize - off : 0,
-                         "/%s", segs[i]);
+        int w = snprintf(out + off, (off < outsize) ? outsize - off : 0, "/%s", segs[i]);
         if (w < 0) break;
         off += (size_t)w;
         if (off >= outsize) {
@@ -552,8 +550,7 @@ void iso_normalize_path(const char *in, char *out, size_t outsize) {
     }
 }
 
-void iso_canonicalize_path(const char *cwd, const char *arg,
-                           char *out, size_t outsize) {
+void iso_canonicalize_path(const char *cwd, const char *arg, char *out, size_t outsize) {
     char joined[1024];
     iso_join_path(cwd, arg, joined, sizeof(joined));
     iso_normalize_path(joined, out, outsize);

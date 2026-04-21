@@ -10,10 +10,10 @@
 #include "parser.h"
 #include "generator.h"
 
-#define INPUT_SIZE  256
-#define PATH_SIZE   256
-#define IMAGE_SIZE  256
-#define MAX_ARGS    16
+#define INPUT_SIZE 256
+#define PATH_SIZE 256
+#define IMAGE_SIZE 256
+#define MAX_ARGS 16
 
 static int is_open(const char *image) {
     return image[0] != '\0';
@@ -44,11 +44,13 @@ static void rhelp(void) {
     printf("  exit | quit       Exit the program\n");
 }
 
+// Mounts the provided image and updates the current path and image (for display)
 static void rmount(int argc, char **argv, char *image, char *path) {
     if (argc < 2) {
         printf("Usage: mount <iso>\n");
         return;
     }
+
     if (is_open(image)) {
         printf("Error: Image already mounted. Use 'unmount' first.\n");
         return;
@@ -71,17 +73,19 @@ static void rmount(int argc, char **argv, char *image, char *path) {
     printf("Opened image: %s\n", argv[1]);
 }
 
-static void rclose(char *image, char *path) {
+// Unmounts the image, if an image is mounted
+static void runmount(char *image, char *path) {
     if (!is_open(image)) {
-        printf("No image is mount\n");
+        printf("No image is mounted\n");
         return;
     }
     fs_close();
     image[0] = '\0';
     path[0]  = '\0';
-    printf("Closed image\n");
+    printf("Unmounted image\n");
 }
 
+// Prints the current working directory path
 static void rpwd(const char *image, const char *path) {
     if (!is_open(image)) {
         printf("No image is mount\n");
@@ -90,9 +94,10 @@ static void rpwd(const char *image, const char *path) {
     printf("%s\n", path);
 }
 
+// Prints the list of subdirectories on the current path
 static void rls(const char *image, const char *path) {
     if (!is_open(image)) {
-        printf("No image is mount. Use 'mount <iso>' first.\n");
+        printf("No image is mounted. Use 'mount <iso>' first.\n");
         return;
     }
     dir_entry_t entries[MAX_DIR_ENTRIES];
@@ -100,9 +105,10 @@ static void rls(const char *image, const char *path) {
     if (n >= 0) print_entries(path, entries, n);
 }
 
+// Changes directories given the path
 static void rcd(int argc, char **argv, const char *image, char *path) {
     if (!is_open(image)) {
-        printf("No image is mount. Use 'mount <iso>' first.\n");
+        printf("No image is mounted. Use 'mount <iso>' first.\n");
         return;
     }
     if (argc < 2) {
@@ -113,7 +119,7 @@ static void rcd(int argc, char **argv, const char *image, char *path) {
     char candidate[PATH_SIZE];
     iso_canonicalize_path(path, argv[1], candidate, sizeof(candidate));
 
-    /* Canonicalization already collapses '..' past root to "/", which is
+    /* Note: Canonicalization already collapses '..' past root to "/", which is
      * always a valid directory, so no parser lookup is needed there. */
     if (strcmp(candidate, "/") != 0) {
         dir_entry_t rec;
@@ -130,9 +136,10 @@ static void rcd(int argc, char **argv, const char *image, char *path) {
     snprintf(path, PATH_SIZE, "%s", candidate);
 }
 
+// Prints the contents of a provided file name
 static void rcat(int argc, char **argv, const char *image, const char *path) {
     if (!is_open(image)) {
-        printf("No image is mount. Use 'mount <iso>' first.\n");
+        printf("No image is mounted. Use 'mount <iso>' first.\n");
         return;
     }
     if (argc < 2) {
@@ -177,14 +184,15 @@ static void rcat(int argc, char **argv, const char *image, const char *path) {
     free(buf);
 }
 
+// Makes the iso image given the src dir and iso name
 static void rmkiso(int argc, char **argv) {
     if (argc < 3) {
         printf("Usage: mkiso <srcdir> <out.iso> [volume_id]\n");
         return;
     }
-    const char *src    = argv[1];
-    const char *out    = argv[2];
-    const char *volid  = (argc >= 4) ? argv[3] : "TEST_FS";
+    const char *src = argv[1];
+    const char *out = argv[2];
+    const char *volid = (argc >= 4) ? argv[3] : "TEST_FS";
 
     int flags = ISO_GEN_ROCK_RIDGE | ISO_GEN_JOLIET;
     if (iso_generate(src, out, volid, flags) < 0) {
@@ -207,8 +215,7 @@ static int tokenize(char *input, char **argv, int max) {
 
 int main(void) {
     /* ANSI clear screen + scrollback. Avoids forking a shell for
-     * `clear` and works on any ANSI-capable terminal (Linux, WSL,
-     * macOS, modern Windows Terminal / VS Code integrated terminal). */
+     * `clear` and works on any ANSI-capable terminal. */
     fputs("\033[H\033[2J\033[3J", stdout);
     fflush(stdout);
 
@@ -216,12 +223,12 @@ int main(void) {
     printf("Type 'help' for a list of commands.\n");
 
     char input[INPUT_SIZE];
-    char path[PATH_SIZE]   = "";
+    char path[PATH_SIZE] = "";
     char image[IMAGE_SIZE] = "";
 
     while (1) {
         if (!is_open(image)) printf("\n > ");
-        else                 printf("\n(%s) %s > ", image, path);
+        else printf("\n(%s) %s > ", image, path);
 
         if (fgets(input, sizeof(input), stdin) == NULL) break;
         /* Strip trailing CR and/or LF so CRLF-terminated input scripts
@@ -238,14 +245,14 @@ int main(void) {
 
         const char *cmd = argv[0];
 
-        if      (!strcmp(cmd, "exit") || !strcmp(cmd, "quit")) break;
-        else if (!strcmp(cmd, "help"))  rhelp();
+        if (!strcmp(cmd, "exit") || !strcmp(cmd, "quit")) break;
+        else if (!strcmp(cmd, "help")) rhelp();
         else if (!strcmp(cmd, "mount")) rmount(argc, argv, image, path);
-        else if (!strcmp(cmd, "close")) rclose(image, path);
-        else if (!strcmp(cmd, "pwd"))   rpwd(image, path);
-        else if (!strcmp(cmd, "ls"))    rls(image, path);
-        else if (!strcmp(cmd, "cd"))    rcd(argc, argv, image, path);
-        else if (!strcmp(cmd, "cat"))   rcat(argc, argv, image, path);
+        else if (!strcmp(cmd, "unmount")) runmount(image, path);
+        else if (!strcmp(cmd, "pwd")) rpwd(image, path);
+        else if (!strcmp(cmd, "ls")) rls(image, path);
+        else if (!strcmp(cmd, "cd")) rcd(argc, argv, image, path);
+        else if (!strcmp(cmd, "cat")) rcat(argc, argv, image, path);
         else if (!strcmp(cmd, "mkiso")) rmkiso(argc, argv);
         else printf("Unknown command: %s (type 'help')\n", cmd);
     }

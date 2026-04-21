@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 #define SECTOR_SIZE 2048
-#define PVD_SECTOR  16
+#define PVD_SECTOR 16
 #define MAX_DIR_ENTRIES 256
 #define MAX_NAME_LEN 256
 
@@ -50,8 +50,7 @@ int fs_stat(const char *path, dir_entry_t *out_record);
 /* Join a working-directory path `cwd` with a user-supplied `arg`.
  * Absolute args (starting with '/') are copied verbatim; relative args
  * are appended to cwd with a separating '/'. Output is NUL-terminated. */
-void iso_join_path(const char *cwd, const char *arg,
-                   char *out, size_t outsize);
+void iso_join_path(const char *cwd, const char *arg, char *out, size_t outsize);
 
 /* Normalize an absolute ISO path: collapse "." and ".." segments and
  * deduplicate '/' separators. An input that resolves above root becomes
@@ -62,7 +61,6 @@ void iso_normalize_path(const char *in, char *out, size_t outsize);
  * canonical ISO path from `cwd` + `arg`. Safe when `out` aliases `arg`
  * only if `arg` is absolute; otherwise `cwd` and `arg` must be
  * distinct from `out`. */
-void iso_canonicalize_path(const char *cwd, const char *arg,
-                           char *out, size_t outsize);
+void iso_canonicalize_path(const char *cwd, const char *arg, char *out, size_t outsize);
 
 #endif
