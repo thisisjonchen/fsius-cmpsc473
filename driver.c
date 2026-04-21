@@ -219,7 +219,9 @@ int main(void) {
         else                 printf("\n(%s) %s > ", image, path);
 
         if (fgets(input, sizeof(input), stdin) == NULL) break;
-        input[strcspn(input, "\n")] = 0;
+        /* Strip trailing CR and/or LF so CRLF-terminated input scripts
+         * (common when piping a file authored on Windows) work too. */
+        input[strcspn(input, "\r\n")] = 0;
 
         char line[INPUT_SIZE];
         strncpy(line, input, sizeof(line) - 1);
