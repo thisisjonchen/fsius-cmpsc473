@@ -33,8 +33,8 @@ static void print_entries(const char *path, dir_entry_t *entries, int count) {
 static void rhelp(void) {
     printf("Available commands:\n");
     printf("  help              Show this help message\n");
-    printf("  open <iso>        Open an ISO9660 image\n");
-    printf("  close             Close the currently open image\n");
+    printf("  mount <iso>       Mount an ISO9660 image\n");
+    printf("  close             Close the currently mounted image\n");
     printf("  pwd               Print the current directory path\n");
     printf("  ls                List entries in the current directory\n");
     printf("  cd <name|..|/>    Change directory\n");
@@ -44,18 +44,18 @@ static void rhelp(void) {
     printf("  exit | quit       Exit the program\n");
 }
 
-static void ropen(int argc, char **argv, char *image, char *path) {
+static void rmount(int argc, char **argv, char *image, char *path) {
     if (argc < 2) {
-        printf("Usage: open <iso>\n");
+        printf("Usage: mount <iso>\n");
         return;
     }
     if (is_open(image)) {
-        printf("Error: Image already open. Use 'close' first.\n");
+        printf("Error: Image already mounted. Use 'unmount' first.\n");
         return;
     }
 
     if (fs_open(argv[1]) < 0) {
-        printf("Error: Unable to open '%s'\n", argv[1]);
+        printf("Error: Unable to mount '%s'\n", argv[1]);
         return;
     }
 
@@ -73,7 +73,7 @@ static void ropen(int argc, char **argv, char *image, char *path) {
 
 static void rclose(char *image, char *path) {
     if (!is_open(image)) {
-        printf("No image is open\n");
+        printf("No image is mount\n");
         return;
     }
     fs_close();
@@ -84,7 +84,7 @@ static void rclose(char *image, char *path) {
 
 static void rpwd(const char *image, const char *path) {
     if (!is_open(image)) {
-        printf("No image is open\n");
+        printf("No image is mount\n");
         return;
     }
     printf("%s\n", path);
@@ -92,7 +92,7 @@ static void rpwd(const char *image, const char *path) {
 
 static void rls(const char *image, const char *path) {
     if (!is_open(image)) {
-        printf("No image is open. Use 'open <iso>' first.\n");
+        printf("No image is mount. Use 'mount <iso>' first.\n");
         return;
     }
     dir_entry_t entries[MAX_DIR_ENTRIES];
@@ -102,7 +102,7 @@ static void rls(const char *image, const char *path) {
 
 static void rcd(int argc, char **argv, const char *image, char *path) {
     if (!is_open(image)) {
-        printf("No image is open. Use 'open <iso>' first.\n");
+        printf("No image is mount. Use 'mount <iso>' first.\n");
         return;
     }
     if (argc < 2) {
@@ -132,7 +132,7 @@ static void rcd(int argc, char **argv, const char *image, char *path) {
 
 static void rcat(int argc, char **argv, const char *image, const char *path) {
     if (!is_open(image)) {
-        printf("No image is open. Use 'open <iso>' first.\n");
+        printf("No image is mount. Use 'mount <iso>' first.\n");
         return;
     }
     if (argc < 2) {
@@ -240,7 +240,7 @@ int main(void) {
 
         if      (!strcmp(cmd, "exit") || !strcmp(cmd, "quit")) break;
         else if (!strcmp(cmd, "help"))  rhelp();
-        else if (!strcmp(cmd, "open"))  ropen(argc, argv, image, path);
+        else if (!strcmp(cmd, "mount")) rmount(argc, argv, image, path);
         else if (!strcmp(cmd, "close")) rclose(image, path);
         else if (!strcmp(cmd, "pwd"))   rpwd(image, path);
         else if (!strcmp(cmd, "ls"))    rls(image, path);
