@@ -57,11 +57,11 @@ genisoimage -r -J -V "TEST_FS" -o fs.iso test_fs/
 ```
 Then at the prompt:
 ```
-> open fs.iso
+> mount fs.iso
 (fs.iso) / > ls
 (fs.iso) / > cd documents
 (fs.iso) /documents > cat todo-list.txt
-(fs.iso) /documents > close
+(fs.iso) /documents > unmount
 > exit
 ```
 Type `help` for the full command list.
