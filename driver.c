@@ -218,7 +218,7 @@ int main(void) {
     fputs("\033[H\033[2J\033[3J", stdout);
     fflush(stdout);
 
-    printf("CMPSC473 Honors Project: ISO9960 FS CLI | By Jonathan Chen and Binay Dalai\n");
+    printf("CMPSC473 Honors Project: ISO9660 FS CLI | By Jonathan Chen and Binay Dalai\n");
     printf("Type 'help' for a list of commands.\n");
 
     char input[INPUT_SIZE];
