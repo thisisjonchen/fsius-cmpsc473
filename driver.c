@@ -70,7 +70,7 @@ static void rmount(int argc, char **argv, char *image, char *path) {
     strncpy(image, argv[1], IMAGE_SIZE - 1);
     image[IMAGE_SIZE - 1] = '\0';
     strcpy(path, "/");
-    printf("Opened image: %s\n", argv[1]);
+    printf("Mounted image: %s\n", argv[1]);
 }
 
 // Unmounts the image, if an image is mounted
@@ -214,8 +214,7 @@ static int tokenize(char *input, char **argv, int max) {
 }
 
 int main(void) {
-    /* ANSI clear screen + scrollback. Avoids forking a shell for
-     * `clear` and works on any ANSI-capable terminal. */
+    // ANSI clear screen + scrollback.
     fputs("\033[H\033[2J\033[3J", stdout);
     fflush(stdout);
 
@@ -231,8 +230,7 @@ int main(void) {
         else printf("\n(%s) %s > ", image, path);
 
         if (fgets(input, sizeof(input), stdin) == NULL) break;
-        /* Strip trailing CR and/or LF so CRLF-terminated input scripts
-         * (common when piping a file authored on Windows) work too. */
+        // Strip trailing CR and/or LF so CRLF-terminated input scripts
         input[strcspn(input, "\r\n")] = 0;
 
         char line[INPUT_SIZE];

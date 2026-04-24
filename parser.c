@@ -15,8 +15,7 @@
 
 /* Name equality used by resolve_path. ISO9660 short names are always
  * uppercased in the directory record; Rock Ridge "NM" entries preserve
- * natural case. A case-insensitive compare works correctly for both
- * and matches the ergonomics users expect from a shell-like CLI. */
+ * natural case. */
 static int iso_name_eq(const char *a, const char *b) {
     return strcasecmp(a, b) == 0;
 }
@@ -60,9 +59,7 @@ int fs_close(void) {
     return 0;
 }
 
-/* ------------------------------------------------------------------ */
-/*  read_sector – read `count` sectors starting at `sector` into buf  */
-/* ------------------------------------------------------------------ */
+//  read_sector – read `count` sectors starting at `sector` into buf
 int read_sector(uint32_t sector, uint32_t count, void *buf) {
     if (fd < 0) {
         fprintf(stderr, "read_sector: no file open\n");
@@ -91,9 +88,7 @@ int read_sector(uint32_t sector, uint32_t count, void *buf) {
     return (int)bytes_read;
 }
 
-/* ------------------------------------------------------------------ */
-/*  parse_pvd – read and validate the Primary Volume Descriptor       */
-/* ------------------------------------------------------------------ */
+// parse_pvd – read and validate the Primary Volume Descriptor
 int parse_pvd(void) {
     uint8_t buf[SECTOR_SIZE];
 
@@ -154,9 +149,7 @@ int parse_pvd(void) {
     return 0;
 }
 
-/* ------------------------------------------------------------------ */
-/*  parse_dir_record – decode one directory record from raw bytes     */
-/* ------------------------------------------------------------------ */
+//  parse_dir_record – decode one directory record from raw bytes
 int parse_dir_record(const uint8_t *data, uint32_t offset,
                      dir_entry_t *out_record) {
     if (data == NULL || out_record == NULL) {
@@ -256,9 +249,7 @@ int parse_dir_record(const uint8_t *data, uint32_t offset,
     return 0;
 }
 
-/* ------------------------------------------------------------------ */
-/*  read_dir_entries – read directory at (lba, data_len) into array   */
-/* ------------------------------------------------------------------ */
+// read_dir_entries – read directory at (lba, data_len) into array
 static int read_dir_entries(uint32_t lba, uint32_t data_len,
                             dir_entry_t *entries, int max_entries) {
     uint8_t *buf = malloc(data_len);
@@ -305,9 +296,7 @@ static int read_dir_entries(uint32_t lba, uint32_t data_len,
     return count;
 }
 
-/* ------------------------------------------------------------------ */
-/*  resolve_path – resolve file or directory path to its dir record   */
-/* ------------------------------------------------------------------ */
+//  resolve_path – resolve file or directory path to its dir record
 int resolve_path(const char *path, dir_entry_t *out_record) {
     if (out_record == NULL) {
         return -1;
@@ -367,10 +356,8 @@ int resolve_path(const char *path, dir_entry_t *out_record) {
     return 0;
 }
 
-/* ------------------------------------------------------------------ */
-/*  list_dir – list entries in the directory identified by `path`     */
-/*  Returns the number of entries written to `entries`, or -1.        */
-/* ------------------------------------------------------------------ */
+//  list_dir – list entries in the directory identified by `path`
+//  Returns the number of entries written to `entries`, or -1
 int list_dir(const char *path, dir_entry_t *entries, int max_entries) {
     if (entries == NULL || max_entries <= 0) {
         return -1;
@@ -401,10 +388,8 @@ int list_dir(const char *path, dir_entry_t *entries, int max_entries) {
                             max_entries);
 }
 
-/* ------------------------------------------------------------------ */
-/*  read_file – read file bytes from ISO image into caller buffer     */
-/*  Returns bytes copied, or -1 on error.                             */
-/* ------------------------------------------------------------------ */
+//  read_file – read file bytes from ISO image into caller buffer
+//  Returns bytes copied, or -1 on error
 int read_file(const char *path, void *buf, uint32_t size) {
     if (path == NULL || buf == NULL) {
         return -1;
