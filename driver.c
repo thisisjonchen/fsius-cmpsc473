@@ -100,6 +100,7 @@ static void rhelp(void) {
     printf("  ls                List entries in the current directory\n");
     printf("  cd <name|..|/>    Change directory\n");
     printf("  cat <file>        Print the contents of a file\n");
+    printf("  stat <path>       Show full metadata for a file or directory\n");
     printf("  mkiso <src> <out> [volid]\n");
     printf("                    Generate an ISO9660 image from <src> into <out>\n");
     printf("  exit | quit       Exit the program\n");
@@ -246,6 +247,53 @@ static void rcat(int argc, char **argv, const char *image, const char *path) {
 }
 
 // Makes the iso image given the src dir and iso name
+// Prints full metadata (Rock Ridge PX + ISO fields) for a path
+static void rstat(int argc, char **argv, const char *image, const char *path) {
+    if (!is_open(image)) {
+        printf("No image is mounted. Use 'mount <iso>' first.\n");
+        return;
+    }
+    if (argc < 2) {
+        printf("Usage: stat <path>\n");
+        return;
+    }
+
+    char target[PATH_SIZE];
+    iso_canonicalize_path(path, argv[1], target, sizeof(target));
+
+    dir_entry_t rec;
+    if (fs_stat(target, &rec) < 0) {
+        printf("Error: '%s' not found\n", argv[1]);
+        return;
+    }
+
+    int is_dir = (rec.flags & 0x02) != 0;
+    const char *kind = is_dir ? "directory" : "file";
+
+    printf("  Path:        %s\n", target);
+    printf("  Name:        %s\n", rec.name);
+    printf("  Type:        %s\n", kind);
+    printf("  Size:        %u bytes\n", rec.data_length);
+    printf("  Extent LBA:  %u\n", rec.extent_lba);
+    printf("  ISO flags:   0x%02x\n", rec.flags);
+
+    if (rec.has_px) {
+        char mode[11];
+        char user[64];
+        char grp[64];
+        mode_string(rec.px_mode, is_dir, mode);
+        user_name(rec.px_uid, user, sizeof(user));
+        group_name(rec.px_gid, grp, sizeof(grp));
+
+        printf("  Mode:        %s  (0%o)\n", mode, rec.px_mode & 07777);
+        printf("  Links:       %u\n", rec.px_nlink);
+        printf("  Owner:       %s (uid %u)\n", user, rec.px_uid);
+        printf("  Group:       %s (gid %u)\n", grp, rec.px_gid);
+    } else {
+        printf("  Mode:        (no Rock Ridge PX entry)\n");
+    }
+}
+
 static void rmkiso(int argc, char **argv) {
     if (argc < 3) {
         printf("Usage: mkiso <srcdir> <out.iso> [volume_id]\n");
@@ -312,6 +360,7 @@ int main(void) {
         else if (!strcmp(cmd, "ls")) rls(image, path);
         else if (!strcmp(cmd, "cd")) rcd(argc, argv, image, path);
         else if (!strcmp(cmd, "cat")) rcat(argc, argv, image, path);
+        else if (!strcmp(cmd, "stat")) rstat(argc, argv, image, path);
         else if (!strcmp(cmd, "mkiso")) rmkiso(argc, argv);
         else printf("Unknown command: %s (type 'help')\n", cmd);
     }
