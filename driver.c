@@ -6,6 +6,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <pwd.h>
+#include <grp.h>
 
 #include "parser.h"
 #include "generator.h"
@@ -19,14 +21,73 @@ static int is_open(const char *image) {
     return image[0] != '\0';
 }
 
+/* Format a POSIX st_mode as a 10-char "drwxr-xr-x" string.
+ * `is_dir_fallback` is consulted only when `mode` looks like it has no
+ * file-type bits set (i.e. PX was absent). */
+static void mode_string(uint32_t mode, int is_dir_fallback, char out[11]) {
+    uint32_t type = mode & 0170000;          /* S_IFMT */
+    char t = '-';
+    switch (type) {
+        case 0040000: t = 'd'; break;        /* S_IFDIR  */
+        case 0120000: t = 'l'; break;        /* S_IFLNK  */
+        case 0020000: t = 'c'; break;        /* S_IFCHR  */
+        case 0060000: t = 'b'; break;        /* S_IFBLK  */
+        case 0010000: t = 'p'; break;        /* S_IFIFO  */
+        case 0140000: t = 's'; break;        /* S_IFSOCK */
+        case 0100000: t = '-'; break;        /* S_IFREG  */
+        default:      t = is_dir_fallback ? 'd' : '-'; break;
+    }
+    out[0] = t;
+    out[1] = (mode & 0400) ? 'r' : '-';
+    out[2] = (mode & 0200) ? 'w' : '-';
+    out[3] = (mode & 0100) ? 'x' : '-';
+    out[4] = (mode & 0040) ? 'r' : '-';
+    out[5] = (mode & 0020) ? 'w' : '-';
+    out[6] = (mode & 0010) ? 'x' : '-';
+    out[7] = (mode & 0004) ? 'r' : '-';
+    out[8] = (mode & 0002) ? 'w' : '-';
+    out[9] = (mode & 0001) ? 'x' : '-';
+    out[10] = '\0';
+}
+
+/* Look up a username for the given uid. Falls back to the numeric id
+ * (formatted as a decimal string) when the system has no entry — common
+ * because the ISO was authored on a different machine. */
+static void user_name(uint32_t uid, char *out, size_t outsize) {
+    struct passwd *pw = getpwuid((uid_t)uid);
+    if (pw && pw->pw_name) snprintf(out, outsize, "%s", pw->pw_name);
+    else                   snprintf(out, outsize, "%u", uid);
+}
+
+static void group_name(uint32_t gid, char *out, size_t outsize) {
+    struct group *gr = getgrgid((gid_t)gid);
+    if (gr && gr->gr_name) snprintf(out, outsize, "%s", gr->gr_name);
+    else                   snprintf(out, outsize, "%u", gid);
+}
+
 static void print_entries(const char *path, dir_entry_t *entries, int count) {
     printf("\n--- %s (%d entries) ---\n", path, count);
     for (int i = 0; i < count; i++) {
-        printf("  %s%-20s  %10u bytes   LBA %u\n",
-               (entries[i].flags & 0x02) ? "[DIR]  " : "[FILE] ",
-               entries[i].name,
-               entries[i].data_length,
-               entries[i].extent_lba);
+        const dir_entry_t *e = &entries[i];
+        int is_dir = (e->flags & 0x02) != 0;
+
+        if (e->has_px) {
+            char mode[11];
+            char user[64];
+            char grp[64];
+            mode_string(e->px_mode, is_dir, mode);
+            user_name(e->px_uid, user, sizeof(user));
+            group_name(e->px_gid, grp, sizeof(grp));
+
+            printf("  %s  %-12s %-12s %10u  LBA %-6u  %s\n",
+                   mode, user, grp, e->data_length, e->extent_lba, e->name);
+        } else {
+            /* Fallback when Rock Ridge PX is absent: keep the original
+             * compact format so non-RR images still render cleanly. */
+            printf("  %s%-20s  %10u bytes   LBA %u\n",
+                   is_dir ? "[DIR]  " : "[FILE] ",
+                   e->name, e->data_length, e->extent_lba);
+        }
     }
 }
 
