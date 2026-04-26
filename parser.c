@@ -178,6 +178,14 @@ int parse_dir_record(const uint8_t *data, uint32_t offset,
     out_record->flags    = rec[25];
     out_record->name_len = file_id_len;
 
+    /* Rock Ridge attributes default to "absent". Filled in below if a
+     * PX System Use entry is found. */
+    out_record->has_px   = 0;
+    out_record->px_mode  = 0;
+    out_record->px_nlink = 0;
+    out_record->px_uid   = 0;
+    out_record->px_gid   = 0;
+
     /* Copy the ISO 9660 file identifier. copied_name_len is size_t
      * (rather than uint8_t) so the MAX_NAME_LEN bound stays meaningful
      * if MAX_NAME_LEN is ever lowered below 256. */
@@ -190,16 +198,24 @@ int parse_dir_record(const uint8_t *data, uint32_t offset,
     out_record->name_len = (uint8_t)copied_name_len;
 
     /*
-     * Look for a Rock Ridge "NM" (Alternate Name) System Use entry.
+     * Walk the Rock Ridge / SUSP "System Use" area for known entries.
      * The System Use area starts after the file identifier + an
      * optional padding byte (padding is present when name_len is even
      * so that the fixed fields end on an even offset).
+     *
+     * Currently recognized:
+     *   NM - Alternate (natural-case) filename
+     *   PX - POSIX file attributes (mode, nlink, uid, gid)
+     *
+     * Both may appear in any order, so we walk the whole area instead
+     * of breaking on the first match.
      */
     int su_start = 33 + file_id_len;
     if (file_id_len % 2 == 0)
         su_start++;   /* padding byte */
 
-    int su_off = su_start;
+    int  su_off   = su_start;
+    int  nm_found = 0;
     while (su_off + 4 <= rec_len) {
         uint8_t sig1   = rec[su_off];
         uint8_t sig2   = rec[su_off + 1];
@@ -209,7 +225,7 @@ int parse_dir_record(const uint8_t *data, uint32_t offset,
             break;
 
         /* NM entry: signature "NM", version at +3, flags at +4, name at +5 */
-        if (sig1 == 'N' && sig2 == 'M') {
+        if (!nm_found && sig1 == 'N' && sig2 == 'M') {
             uint8_t nm_flags = rec[su_off + 4];
             if (nm_flags == 0 && su_len > 5) {
                 int nm_name_len = su_len - 5;
@@ -220,7 +236,18 @@ int parse_dir_record(const uint8_t *data, uint32_t offset,
                 out_record->name[nm_name_len] = '\0';
                 out_record->name_len = (uint8_t)nm_name_len;
             }
-            break;
+            nm_found = 1;
+        }
+
+        /* PX entry: signature "PX", LEN_PX is 36 (basic) or 44 (with
+         * file_serial_number). Each numeric field is 8 bytes: 4 LE then
+         * 4 BE recording the same value. We read the LE half. */
+        else if (sig1 == 'P' && sig2 == 'X' && su_len >= 36) {
+            memcpy(&out_record->px_mode,  rec + su_off + 4,  4);
+            memcpy(&out_record->px_nlink, rec + su_off + 12, 4);
+            memcpy(&out_record->px_uid,   rec + su_off + 20, 4);
+            memcpy(&out_record->px_gid,   rec + su_off + 28, 4);
+            out_record->has_px = 1;
         }
 
         su_off += su_len;

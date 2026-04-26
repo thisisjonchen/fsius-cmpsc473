@@ -15,8 +15,17 @@ typedef struct {
     uint32_t extent_lba;            /* LBA of the file/directory extent */
     uint32_t data_length;           /* Size of file/directory data in bytes */
     uint8_t  flags;                 /* File flags (bit 1 = directory) */
-    uint8_t  name_len;             /* Length of file identifier */
-    char     name[MAX_NAME_LEN];   /* Null-terminated file/directory name */
+    uint8_t  name_len;              /* Length of file identifier */
+    char     name[MAX_NAME_LEN];    /* Null-terminated file/directory name */
+
+    /* Rock Ridge "PX" (POSIX file attributes). has_px is 1 when a PX
+     * System Use entry was found and these fields are valid; 0 means the
+     * image does not carry POSIX attributes for this entry. */
+    uint8_t  has_px;
+    uint32_t px_mode;               /* st_mode (file type + permission bits) */
+    uint32_t px_nlink;              /* st_nlink                              */
+    uint32_t px_uid;                /* st_uid                                */
+    uint32_t px_gid;                /* st_gid                                */
 } dir_entry_t;
 
 /* Primary Volume Descriptor */
