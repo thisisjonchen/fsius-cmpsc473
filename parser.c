@@ -24,6 +24,45 @@ static int iso_name_eq(const char *a, const char *b) {
 
 int fd = -1;
 pvd_t pvd;
+static int use_joliet = 0;
+
+static int decode_joliet_name(const uint8_t *src, uint8_t len, char *out, size_t outsize) {
+    if (out == NULL || outsize == 0) return -1;
+
+    size_t oi = 0; // output index
+
+    /*
+     * Joliet File Identifier is UTF-16BE big-endian
+     * Replace non-ASCII chars with '?'
+     */
+    for (uint8_t i = 0; i + 1 < len; i += 2) {
+        uint16_t ch = ((uint16_t)src[i] << 8) | src[i + 1];
+
+        if (ch == 0) break;
+
+        // ascii character: 0x00 - 0x7F
+        if (ch < 0x80) {
+            if (oi + 1 >= outsize) break; // check if enough room for char and final null term
+            out[oi++] = (char)ch; // write char and inc output index
+        // 2-byte UTF-8 char
+        } else if (ch < 0x800) {
+            if (oi + 2 >= outsize) break;
+            // byte format: 110xxxxx 10xxxxxx, 110 -> 0xC0 and 10 -> 0x80
+            out[oi++] = (char)(0xC0 | (ch >> 6)); // take upper bits of char and attach to 110xxxxx pattern 
+            out[oi++] = (char)(0x80 | (ch & 0x3F)); // keep lower 6 bits
+        // 3-byte UTF-8 char
+        } else {
+            if (oi + 3 >= outsize) break;
+            // byte format: 1110xxxx 110xxxxx 10xxxxxx
+            out[oi++] = (char)(0xE0 | (ch >> 12)); // extract top 4 bits, write first byte
+            out[oi++] = (char)(0x80 | ((ch >> 6) & 0x3F)); // extract middle 6 bits, write 2nd byte
+            out[oi++] = (char)(0x80 | (ch & 0x3F)); // keep lowest 6bits
+        }
+    }
+
+    out[oi] = '\0';
+    return 0;
+}
 
 /**
  * Note: We use open() and close() here instead of fopen() and fclose() to avoid
@@ -89,51 +128,100 @@ int read_sector(uint32_t sector, uint32_t count, void *buf) {
 }
 
 // parse_pvd – read and validate the Primary Volume Descriptor
-int parse_pvd(void) {
+int parse_pvd() {
     uint8_t buf[SECTOR_SIZE];
 
-    if (read_sector(PVD_SECTOR, 1, buf) < SECTOR_SIZE) {
-        fprintf(stderr, "parse_pvd: could not read PVD sector\n");
+    int found_pvd = 0;
+    int found_joliet = 0;
+
+    dir_entry_t joliet_root;
+    memset(&joliet_root, 0, sizeof(joliet_root));
+
+    use_joliet = 0;
+
+    /*
+     * ISO9660 volume descriptors begin at sector 16. PVD has type 1. Joliet if present is stored as a Supplementary
+     * Volume Descriptor with type 2, so we need to check for it. The descriptor list ends with type 255.
+     */
+    for (uint32_t sector = PVD_SECTOR; ; sector++) {
+        if (read_sector(sector, 1, buf) < SECTOR_SIZE) {
+            fprintf(stderr, "parse_pvd: could not read volume descriptor sector %u\n",
+                    sector);
+            return -1;
+        }
+
+        /* Standard identifier must be "CD001" */
+        if (memcmp(buf + 1, "CD001", 5) != 0) {
+            fprintf(stderr, "parse_pvd: bad standard identifier\n");
+            return -1;
+        }
+
+        /* Type code 255 marks the end of the volume descriptor set */
+        if (buf[0] == 255) {
+            break;
+        }
+
+        /* Type code must be 1 (Primary Volume Descriptor) */
+        if (buf[0] == 1) {
+            /* System Identifier (bytes 8-39, 32 chars) */
+            memcpy(pvd.system_id, buf + 8, 32);
+            pvd.system_id[32] = '\0';
+
+            /* Volume Identifier (bytes 40-71, 32 chars) */
+            memcpy(pvd.volume_id, buf + 40, 32);
+            pvd.volume_id[32] = '\0';
+
+            /* Volume Space Size – little-endian at bytes 80-83 */
+            memcpy(&pvd.volume_space_size, buf + 80, 4);
+
+            /* Logical Block Size – little-endian at bytes 128-129 */
+            memcpy(&pvd.logical_block_size, buf + 128, 2);
+
+            /* Path Table Size – little-endian at bytes 132-135 */
+            memcpy(&pvd.path_table_size, buf + 132, 4);
+
+            /* Root Directory Record (34 bytes starting at offset 156) */
+            const uint8_t *root = buf + 156;
+            pvd.root_record.length = root[0];
+            memcpy(&pvd.root_record.extent_lba, root + 2, 4);     /* LE extent LBA */
+            memcpy(&pvd.root_record.data_length, root + 10, 4);   /* LE data length */
+            pvd.root_record.flags = root[25];
+            pvd.root_record.name_len = root[32];
+            strcpy(pvd.root_record.name, "/");
+
+            found_pvd = 1;
+        }
+
+        // Joliet uses one of the escape sequences "%/@", "%/C", or "%/E" at bytes 88-90, indicating levels 1-3 respectively
+
+        else if (buf[0] == 2) {
+            // buf[88] = % and buf[89] = / and buf[90] = 1 of @, C, E
+            if (buf[88] == '%' && buf[89] == '/' && (buf[90] == '@' || buf[90] == 'C' || buf[90] == 'E')) {
+
+                // Root Directory Record (34 bytes starting at offset 156)
+                const uint8_t *root = buf + 156;
+                joliet_root.length = root[0];
+                memcpy(&joliet_root.extent_lba, root + 2, 4); // LE extent LBA
+                memcpy(&joliet_root.data_length, root + 10, 4); // LE data length
+                joliet_root.flags = root[25];
+                joliet_root.name_len = root[32];
+                strcpy(joliet_root.name, "/");
+
+                found_joliet = 1;
+            }
+        }
+    }
+
+    if (!found_pvd) {
+        fprintf(stderr, "parse_pvd: no Primary Volume Descriptor found\n");
         return -1;
     }
 
-    /* Type code must be 1 (Primary Volume Descriptor) */
-    if (buf[0] != 1) {
-        fprintf(stderr, "parse_pvd: bad type code %d\n", buf[0]);
-        return -1;
+    // Prefer Joliet's directory tree when present, since it preserves long mixed-case Unicode filenames better than plain ISO9660 names
+    if (found_joliet) {
+        pvd.root_record = joliet_root;
+        use_joliet = 1;
     }
-
-    /* Standard identifier must be "CD001" */
-    if (memcmp(buf + 1, "CD001", 5) != 0) {
-        fprintf(stderr, "parse_pvd: bad standard identifier\n");
-        return -1;
-    }
-
-    /* System Identifier (bytes 8-39, 32 chars) */
-    memcpy(pvd.system_id, buf + 8, 32);
-    pvd.system_id[32] = '\0';
-
-    /* Volume Identifier (bytes 40-71, 32 chars) */
-    memcpy(pvd.volume_id, buf + 40, 32);
-    pvd.volume_id[32] = '\0';
-
-    /* Volume Space Size – little-endian at bytes 80-83 */
-    memcpy(&pvd.volume_space_size, buf + 80, 4);
-
-    /* Logical Block Size – little-endian at bytes 128-129 */
-    memcpy(&pvd.logical_block_size, buf + 128, 2);
-
-    /* Path Table Size – little-endian at bytes 132-135 */
-    memcpy(&pvd.path_table_size, buf + 132, 4);
-
-    /* Root Directory Record (34 bytes starting at offset 156) */
-    const uint8_t *root = buf + 156;
-    pvd.root_record.length      = root[0];
-    memcpy(&pvd.root_record.extent_lba,  root + 2,  4);   /* LE extent LBA  */
-    memcpy(&pvd.root_record.data_length, root + 10, 4);   /* LE data length  */
-    pvd.root_record.flags       = root[25];
-    pvd.root_record.name_len    = root[32];
-    strcpy(pvd.root_record.name, "/");
 
     #ifdef DEBUG
         printf("PVD parsed successfully:\n");
@@ -144,6 +232,7 @@ int parse_pvd(void) {
         printf("  Path Table Size : %u bytes\n", pvd.path_table_size);
         printf("  Root Dir LBA    : %u\n", pvd.root_record.extent_lba);
         printf("  Root Dir Size   : %u bytes\n", pvd.root_record.data_length);
+        printf("  Joliet          : %s\n", use_joliet ? "yes" : "no");
     #endif
 
     return 0;
@@ -186,71 +275,73 @@ int parse_dir_record(const uint8_t *data, uint32_t offset,
     out_record->px_uid   = 0;
     out_record->px_gid   = 0;
 
-    /* Copy the ISO 9660 file identifier. copied_name_len is size_t
-     * (rather than uint8_t) so the MAX_NAME_LEN bound stays meaningful
-     * if MAX_NAME_LEN is ever lowered below 256. */
-    size_t copied_name_len = file_id_len;
-    if (copied_name_len >= MAX_NAME_LEN) {
-        copied_name_len = MAX_NAME_LEN - 1;
-    }
-    memcpy(out_record->name, rec + 33, copied_name_len);
-    out_record->name[copied_name_len] = '\0';
-    out_record->name_len = (uint8_t)copied_name_len;
+    // In a Joliet tree, the filename itself is long Unicode, we don't want RR to override parsing
+    if (use_joliet && !(file_id_len == 1 && (rec[33] == 0x00 || rec[33] == 0x01))) {
+        decode_joliet_name(rec + 33, file_id_len, out_record->name, sizeof(out_record->name));
+        out_record->name_len = (uint8_t)strlen(out_record->name);
+    } else {
+        size_t copied_name_len = file_id_len;
+        if (copied_name_len >= MAX_NAME_LEN) copied_name_len = MAX_NAME_LEN - 1;
 
-    /*
-     * Walk the Rock Ridge / SUSP "System Use" area for known entries.
-     * The System Use area starts after the file identifier + an
-     * optional padding byte (padding is present when name_len is even
-     * so that the fixed fields end on an even offset).
-     *
-     * Currently recognized:
-     *   NM - Alternate (natural-case) filename
-     *   PX - POSIX file attributes (mode, nlink, uid, gid)
-     *
-     * Both may appear in any order, so we walk the whole area instead
-     * of breaking on the first match.
-     */
-    int su_start = 33 + file_id_len;
-    if (file_id_len % 2 == 0)
-        su_start++;   /* padding byte */
+        memcpy(out_record->name, rec + 33, copied_name_len);
+        out_record->name[copied_name_len] = '\0';
+        out_record->name_len = (uint8_t) copied_name_len;
 
-    int  su_off   = su_start;
-    int  nm_found = 0;
-    while (su_off + 4 <= rec_len) {
-        uint8_t sig1   = rec[su_off];
-        uint8_t sig2   = rec[su_off + 1];
-        uint8_t su_len = rec[su_off + 2];
+        /*
+        * Walk the Rock Ridge / SUSP "System Use" area for known entries.
+        * The System Use area starts after the file identifier + an
+        * optional padding byte (padding is present when name_len is even
+        * so that the fixed fields end on an even offset).
+        *
+        * Currently recognized:
+        *   NM - Alternate (natural-case) filename
+        *   PX - POSIX file attributes (mode, nlink, uid, gid)
+        *
+        * Both may appear in any order, so we walk the whole area instead
+        * of breaking on the first match.
+        */
+        int su_start = 33 + file_id_len;
+        if (file_id_len % 2 == 0)
+            su_start++;   /* padding byte */
 
-        if (su_len < 4 || su_off + su_len > rec_len)
-            break;
+        int su_off = su_start;
+        int nm_found = 0;
+        while (su_off + 4 <= rec_len) {
+            uint8_t sig1   = rec[su_off];
+            uint8_t sig2   = rec[su_off + 1];
+            uint8_t su_len = rec[su_off + 2];
 
-        /* NM entry: signature "NM", version at +3, flags at +4, name at +5 */
-        if (!nm_found && sig1 == 'N' && sig2 == 'M') {
-            uint8_t nm_flags = rec[su_off + 4];
-            if (nm_flags == 0 && su_len > 5) {
-                int nm_name_len = su_len - 5;
-                if (nm_name_len >= MAX_NAME_LEN) {
-                    nm_name_len = MAX_NAME_LEN - 1;
+            if (su_len < 4 || su_off + su_len > rec_len)
+                break;
+
+            /* NM entry: signature "NM", version at +3, flags at +4, name at +5 */
+            if (!nm_found && sig1 == 'N' && sig2 == 'M') {
+                uint8_t nm_flags = rec[su_off + 4];
+                if (nm_flags == 0 && su_len > 5) {
+                    int nm_name_len = su_len - 5;
+                    if (nm_name_len >= MAX_NAME_LEN) {
+                        nm_name_len = MAX_NAME_LEN - 1;
+                    }
+                    memcpy(out_record->name, rec + su_off + 5, nm_name_len);
+                    out_record->name[nm_name_len] = '\0';
+                    out_record->name_len = (uint8_t)nm_name_len;
                 }
-                memcpy(out_record->name, rec + su_off + 5, nm_name_len);
-                out_record->name[nm_name_len] = '\0';
-                out_record->name_len = (uint8_t)nm_name_len;
+                nm_found = 1;
             }
-            nm_found = 1;
-        }
 
-        /* PX entry: signature "PX", LEN_PX is 36 (basic) or 44 (with
-         * file_serial_number). Each numeric field is 8 bytes: 4 LE then
-         * 4 BE recording the same value. We read the LE half. */
-        else if (sig1 == 'P' && sig2 == 'X' && su_len >= 36) {
-            memcpy(&out_record->px_mode,  rec + su_off + 4,  4);
-            memcpy(&out_record->px_nlink, rec + su_off + 12, 4);
-            memcpy(&out_record->px_uid,   rec + su_off + 20, 4);
-            memcpy(&out_record->px_gid,   rec + su_off + 28, 4);
-            out_record->has_px = 1;
-        }
+            /* PX entry: signature "PX", LEN_PX is 36 (basic) or 44 (with
+            * file_serial_number). Each numeric field is 8 bytes: 4 LE then
+            * 4 BE recording the same value. We read the LE half. */
+            else if (sig1 == 'P' && sig2 == 'X' && su_len >= 36) {
+                memcpy(&out_record->px_mode,  rec + su_off + 4,  4);
+                memcpy(&out_record->px_nlink, rec + su_off + 12, 4);
+                memcpy(&out_record->px_uid,   rec + su_off + 20, 4);
+                memcpy(&out_record->px_gid,   rec + su_off + 28, 4);
+                out_record->has_px = 1;
+            }
 
-        su_off += su_len;
+            su_off += su_len;
+        }
     }
 
     /*

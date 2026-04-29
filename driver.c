@@ -125,7 +125,7 @@ static void rmount(int argc, char **argv, char *image, char *path) {
 
     if (parse_pvd() < 0) {
         fs_close();
-        printf("Error: Unable to parse Primary Volume Descriptor\n");
+        printf("Error: Unable to parse volume descriptors\n");
         return;
     }
 
