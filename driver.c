@@ -21,6 +21,20 @@ static int is_open(const char *image) {
     return image[0] != '\0';
 }
 
+// For names like "Long File Name", we need to parse it correctly
+static void join_args(int start, int argc, char **argv, char *out, size_t outsize) {
+    if (out == NULL || outsize == 0) return;
+
+    out[0] = '\0';
+
+    for (int i = start; i < argc; i++) {
+        if (i > start) {
+            strncat(out, " ", outsize - strlen(out) - 1);
+        }
+        strncat(out, argv[i], outsize - strlen(out) - 1);
+    }
+}
+
 /* Format a POSIX st_mode as a 10-char "drwxr-xr-x" string.
  * `is_dir_fallback` is consulted only when `mode` looks like it has no
  * file-type bits set (i.e. PX was absent). */
@@ -178,19 +192,21 @@ static void rcd(int argc, char **argv, const char *image, char *path) {
         return;
     }
 
+    char arg_path[PATH_SIZE];
     char candidate[PATH_SIZE];
-    iso_canonicalize_path(path, argv[1], candidate, sizeof(candidate));
+    join_args(1, argc, argv, arg_path, sizeof(arg_path));
+    iso_canonicalize_path(path, arg_path, candidate, sizeof(candidate));
 
     /* Note: Canonicalization already collapses '..' past root to "/", which is
      * always a valid directory, so no parser lookup is needed there. */
     if (strcmp(candidate, "/") != 0) {
         dir_entry_t rec;
         if (fs_stat(candidate, &rec) < 0) {
-            printf("Error: '%s' not found\n", argv[1]);
+            printf("Error: '%s' not found\n", arg_path);
             return;
         }
         if (!(rec.flags & 0x02)) {
-            printf("Error: '%s' is not a directory\n", argv[1]);
+            printf("Error: '%s' is not a directory\n", arg_path);
             return;
         }
     }
@@ -209,16 +225,18 @@ static void rcat(int argc, char **argv, const char *image, const char *path) {
         return;
     }
 
+    char arg_path[PATH_SIZE];
     char full[PATH_SIZE];
-    iso_canonicalize_path(path, argv[1], full, sizeof(full));
+    join_args(1, argc, argv, arg_path, sizeof(arg_path));
+    iso_canonicalize_path(path, arg_path, full, sizeof(full));
 
     dir_entry_t rec;
     if (fs_stat(full, &rec) < 0) {
-        printf("Error: '%s' not found\n", argv[1]);
+        printf("Error: '%s' not found\n", arg_path);
         return;
     }
     if (rec.flags & 0x02) {
-        printf("Error: '%s' is a directory\n", argv[1]);
+        printf("Error: '%s' is a directory\n", arg_path);
         return;
     }
 
@@ -258,12 +276,14 @@ static void rstat(int argc, char **argv, const char *image, const char *path) {
         return;
     }
 
+    char arg_path[PATH_SIZE];
     char target[PATH_SIZE];
-    iso_canonicalize_path(path, argv[1], target, sizeof(target));
+    join_args(1, argc, argv, arg_path, sizeof(arg_path));
+    iso_canonicalize_path(path, arg_path, target, sizeof(target));
 
     dir_entry_t rec;
     if (fs_stat(target, &rec) < 0) {
-        printf("Error: '%s' not found\n", argv[1]);
+        printf("Error: '%s' not found\n", arg_path);
         return;
     }
 

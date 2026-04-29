@@ -46,7 +46,7 @@ make
 ### Generate a test ISO
 Either directly:
 ```bash
-genisoimage -r -J -V "TEST_FS" -o fs.iso test_fs/
+genisoimage -input-charset utf-8 -r -J -V  "TEST_FS" -o fs.iso test_fs/
 ```
 ...or from inside the CLI (uses the same flags under the hood):
 ```
