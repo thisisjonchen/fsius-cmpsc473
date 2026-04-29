@@ -19,6 +19,8 @@ This project implements an ISO9660-based file system that includes an ISO parser
 * [x] ISO Wrapper (interface for using Parser and Generator)
   * [x] Build Generator (`libgenerator.a`, wraps `genisoimage`/`mkisofs`)
   * [x] Build Parser (`libparser.a`)
+* [x] Joliet Filename Extensions - Jonathan
+* [x] Rock Ridge Extensions w/ Permissions - Binay
 
 
 ## References
