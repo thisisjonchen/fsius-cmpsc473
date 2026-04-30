@@ -50,6 +50,32 @@ int resolve_path(const char *path, dir_entry_t *out_record);
 int list_dir(const char *path, dir_entry_t *entries, int max_entries);
 int read_file(const char *path, void *buf, uint32_t size);
 
+/* --------------------------- Naming mode ---------------------------- */
+
+/* Which directory tree / extension the parser uses when reading an
+ * already-mounted image. AUTO is only meaningful as an argument to
+ * iso_set_mode and is never returned by iso_get_mode. */
+typedef enum {
+    ISO_MODE_AUTO = 0,
+    ISO_MODE_ROCK_RIDGE,
+    ISO_MODE_JOLIET,
+    ISO_MODE_ISO9660,
+} iso_mode_t;
+
+/* Extension presence flags, populated by parse_pvd. */
+extern int iso_has_rr;
+extern int iso_has_joliet;
+extern int iso_joliet_level;   /* 1, 2, 3, or 0 if Joliet absent */
+
+iso_mode_t  iso_get_mode(void);
+
+/* Switch the active naming mode. ISO_MODE_AUTO picks the richest
+ * available: RR > Joliet > ISO. Returns 0 on success, -1 if the
+ * requested mode is not available on the current image. */
+int         iso_set_mode(iso_mode_t mode);
+
+const char *iso_mode_name(iso_mode_t mode);
+
 /* --------------------------- Misc. helpers --------------------------- */
 
 /* Resolve `path` to a directory entry (convenience wrapper around

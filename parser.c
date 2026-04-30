@@ -24,7 +24,19 @@ static int iso_name_eq(const char *a, const char *b) {
 
 int fd = -1;
 pvd_t pvd;
-static int use_joliet = 0;
+
+/* Extension state populated by parse_pvd. */
+int iso_has_rr       = 0;
+int iso_has_joliet   = 0;
+int iso_joliet_level = 0;
+
+/* Cached roots for each tree. cached_root_iso is always populated when
+ * an image is mounted; cached_root_joliet only when a Joliet SVD is
+ * detected. pvd.root_record is the *active* root used by resolve_path
+ * and list_dir, and is overwritten whenever iso_set_mode succeeds. */
+static dir_entry_t cached_root_iso;
+static dir_entry_t cached_root_joliet;
+static iso_mode_t  current_mode = ISO_MODE_ISO9660;
 
 static int decode_joliet_name(const uint8_t *src, uint8_t len, char *out, size_t outsize) {
     if (out == NULL || outsize == 0) return -1;
@@ -127,17 +139,51 @@ int read_sector(uint32_t sector, uint32_t count, void *buf) {
     return (int)bytes_read;
 }
 
+/* Detect Rock Ridge by walking the SUSP area of the root self-record at
+ * `root_lba`. Any SP/PX/NM/ER/RR signature is treated as conclusive. */
+static int detect_rock_ridge(uint32_t root_lba) {
+    uint8_t buf[SECTOR_SIZE];
+    if (read_sector(root_lba, 1, buf) < SECTOR_SIZE) return 0;
+
+    uint8_t rec_len = buf[0];
+    if (rec_len < 34) return 0;
+
+    uint8_t fid_len = buf[32];
+    if ((uint32_t)(33 + fid_len) > rec_len) return 0;
+
+    int su_start = 33 + fid_len;
+    if (fid_len % 2 == 0) su_start++;   /* padding byte */
+
+    int su_off = su_start;
+    while (su_off + 4 <= rec_len) {
+        uint8_t s1 = buf[su_off];
+        uint8_t s2 = buf[su_off + 1];
+        uint8_t sl = buf[su_off + 2];
+        if (sl < 4 || su_off + sl > rec_len) break;
+
+        if ((s1 == 'S' && s2 == 'P') ||
+            (s1 == 'P' && s2 == 'X') ||
+            (s1 == 'N' && s2 == 'M') ||
+            (s1 == 'E' && s2 == 'R') ||
+            (s1 == 'R' && s2 == 'R')) {
+            return 1;
+        }
+        su_off += sl;
+    }
+    return 0;
+}
+
 // parse_pvd – read and validate the Primary Volume Descriptor
 int parse_pvd() {
     uint8_t buf[SECTOR_SIZE];
 
     int found_pvd = 0;
-    int found_joliet = 0;
 
-    dir_entry_t joliet_root;
-    memset(&joliet_root, 0, sizeof(joliet_root));
-
-    use_joliet = 0;
+    iso_has_rr       = 0;
+    iso_has_joliet   = 0;
+    iso_joliet_level = 0;
+    memset(&cached_root_iso,    0, sizeof(cached_root_iso));
+    memset(&cached_root_joliet, 0, sizeof(cached_root_joliet));
 
     /*
      * ISO9660 volume descriptors begin at sector 16. PVD has type 1. Joliet if present is stored as a Supplementary
@@ -182,32 +228,34 @@ int parse_pvd() {
 
             /* Root Directory Record (34 bytes starting at offset 156) */
             const uint8_t *root = buf + 156;
-            pvd.root_record.length = root[0];
-            memcpy(&pvd.root_record.extent_lba, root + 2, 4);     /* LE extent LBA */
-            memcpy(&pvd.root_record.data_length, root + 10, 4);   /* LE data length */
-            pvd.root_record.flags = root[25];
-            pvd.root_record.name_len = root[32];
-            strcpy(pvd.root_record.name, "/");
+            cached_root_iso.length = root[0];
+            memcpy(&cached_root_iso.extent_lba,  root + 2,  4);
+            memcpy(&cached_root_iso.data_length, root + 10, 4);
+            cached_root_iso.flags    = root[25];
+            cached_root_iso.name_len = root[32];
+            strcpy(cached_root_iso.name, "/");
 
             found_pvd = 1;
         }
 
-        // Joliet uses one of the escape sequences "%/@", "%/C", or "%/E" at bytes 88-90, indicating levels 1-3 respectively
-
+        /* Type code 2 is a Supplementary Volume Descriptor. Joliet is
+         * indicated by escape sequences "%/@", "%/C", or "%/E" at
+         * bytes 88-90, meaning UCS-2 levels 1, 2, or 3. */
         else if (buf[0] == 2) {
-            // buf[88] = % and buf[89] = / and buf[90] = 1 of @, C, E
-            if (buf[88] == '%' && buf[89] == '/' && (buf[90] == '@' || buf[90] == 'C' || buf[90] == 'E')) {
+            if (buf[88] == '%' && buf[89] == '/' &&
+                (buf[90] == '@' || buf[90] == 'C' || buf[90] == 'E')) {
 
-                // Root Directory Record (34 bytes starting at offset 156)
                 const uint8_t *root = buf + 156;
-                joliet_root.length = root[0];
-                memcpy(&joliet_root.extent_lba, root + 2, 4); // LE extent LBA
-                memcpy(&joliet_root.data_length, root + 10, 4); // LE data length
-                joliet_root.flags = root[25];
-                joliet_root.name_len = root[32];
-                strcpy(joliet_root.name, "/");
+                cached_root_joliet.length = root[0];
+                memcpy(&cached_root_joliet.extent_lba,  root + 2,  4);
+                memcpy(&cached_root_joliet.data_length, root + 10, 4);
+                cached_root_joliet.flags    = root[25];
+                cached_root_joliet.name_len = root[32];
+                strcpy(cached_root_joliet.name, "/");
 
-                found_joliet = 1;
+                iso_has_joliet = 1;
+                iso_joliet_level = (buf[90] == '@') ? 1 :
+                                   (buf[90] == 'C') ? 2 : 3;
             }
         }
     }
@@ -217,23 +265,12 @@ int parse_pvd() {
         return -1;
     }
 
-    // Prefer Joliet's directory tree when present, since it preserves long mixed-case Unicode filenames better than plain ISO9660 names
-    if (found_joliet) {
-        pvd.root_record = joliet_root;
-        use_joliet = 1;
-    }
+    /* Probe the PVD root for Rock Ridge SUSP signatures. Done after the
+     * VDS walk because we need a valid root LBA. */
+    iso_has_rr = detect_rock_ridge(cached_root_iso.extent_lba);
 
-    #ifdef DEBUG
-        printf("PVD parsed successfully:\n");
-        printf("  System ID       : %.32s\n", pvd.system_id);
-        printf("  Volume ID       : %.32s\n", pvd.volume_id);
-        printf("  Volume Space    : %u sectors\n", pvd.volume_space_size);
-        printf("  Block Size      : %u bytes\n", pvd.logical_block_size);
-        printf("  Path Table Size : %u bytes\n", pvd.path_table_size);
-        printf("  Root Dir LBA    : %u\n", pvd.root_record.extent_lba);
-        printf("  Root Dir Size   : %u bytes\n", pvd.root_record.data_length);
-        printf("  Joliet          : %s\n", use_joliet ? "yes" : "no");
-    #endif
+    /* Auto-pick the richest naming mode available. */
+    iso_set_mode(ISO_MODE_AUTO);
 
     return 0;
 }
@@ -275,8 +312,12 @@ int parse_dir_record(const uint8_t *data, uint32_t offset,
     out_record->px_uid   = 0;
     out_record->px_gid   = 0;
 
-    // In a Joliet tree, the filename itself is long Unicode, we don't want RR to override parsing
-    if (use_joliet && !(file_id_len == 1 && (rec[33] == 0x00 || rec[33] == 0x01))) {
+    /* Joliet records are UCS-2BE; RR/ISO records are ASCII. The "."/".."
+     * self-records (length-1 name 0x00/0x01) are always raw bytes. */
+    int is_dotdot = (file_id_len == 1 &&
+                     (rec[33] == 0x00 || rec[33] == 0x01));
+
+    if (current_mode == ISO_MODE_JOLIET && !is_dotdot) {
         decode_joliet_name(rec + 33, file_id_len, out_record->name, sizeof(out_record->name));
         out_record->name_len = (uint8_t)strlen(out_record->name);
     } else {
@@ -286,6 +327,11 @@ int parse_dir_record(const uint8_t *data, uint32_t offset,
         memcpy(out_record->name, rec + 33, copied_name_len);
         out_record->name[copied_name_len] = '\0';
         out_record->name_len = (uint8_t) copied_name_len;
+
+        /* SUSP / Rock Ridge entries are only honored in RR mode. In
+         * ISO mode the user explicitly asked for plain ISO9660, so we
+         * skip the walk and let the version-suffix strip below run. */
+        if (current_mode != ISO_MODE_ROCK_RIDGE) goto strip_iso_suffix;
 
         /*
         * Walk the Rock Ridge / SUSP "System Use" area for known entries.
@@ -342,6 +388,8 @@ int parse_dir_record(const uint8_t *data, uint32_t offset,
 
             su_off += su_len;
         }
+
+    strip_iso_suffix: ;
     }
 
     /*
@@ -657,4 +705,42 @@ void iso_canonicalize_path(const char *cwd, const char *arg, char *out, size_t o
     char joined[1024];
     iso_join_path(cwd, arg, joined, sizeof(joined));
     iso_normalize_path(joined, out, outsize);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Naming-mode API                                                   */
+/* ------------------------------------------------------------------ */
+
+iso_mode_t iso_get_mode(void) {
+    return current_mode;
+}
+
+const char *iso_mode_name(iso_mode_t mode) {
+    switch (mode) {
+        case ISO_MODE_AUTO:       return "auto";
+        case ISO_MODE_ROCK_RIDGE: return "rock-ridge";
+        case ISO_MODE_JOLIET:     return "joliet";
+        case ISO_MODE_ISO9660:    return "iso9660";
+    }
+    return "unknown";
+}
+
+int iso_set_mode(iso_mode_t mode) {
+    if (mode == ISO_MODE_AUTO) {
+        if      (iso_has_rr)     mode = ISO_MODE_ROCK_RIDGE;
+        else if (iso_has_joliet) mode = ISO_MODE_JOLIET;
+        else                     mode = ISO_MODE_ISO9660;
+    }
+
+    /* Reject modes that aren't actually present on the current image. */
+    if (mode == ISO_MODE_ROCK_RIDGE && !iso_has_rr)     return -1;
+    if (mode == ISO_MODE_JOLIET     && !iso_has_joliet) return -1;
+
+    /* Joliet swaps to the SVD root; RR and ISO both use the PVD root.
+     * Rock Ridge mode "decorates" PVD records via the SUSP walk, it
+     * doesn't have its own directory tree. */
+    pvd.root_record = (mode == ISO_MODE_JOLIET) ? cached_root_joliet
+                                                : cached_root_iso;
+    current_mode = mode;
+    return 0;
 }
