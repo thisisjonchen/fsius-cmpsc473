@@ -115,6 +115,7 @@ static void rhelp(void) {
     printf("  cd <name|..|/>    Change directory\n");
     printf("  cat <file>        Print the contents of a file\n");
     printf("  stat <path>       Show full metadata for a file or directory\n");
+    printf("  mode [name]       Show or change naming mode (auto|rr|joliet|iso)\n");
     printf("  mkiso <src> <out> [volid]\n");
     printf("                    Generate an ISO9660 image from <src> into <out>\n");
     printf("  exit | quit       Exit the program\n");
@@ -147,6 +148,14 @@ static void rmount(int argc, char **argv, char *image, char *path) {
     image[IMAGE_SIZE - 1] = '\0';
     strcpy(path, "/");
     printf("Mounted image: %s\n", argv[1]);
+
+    /* Report which naming extensions the image carries and which one
+     * we picked. Helps the user know whether 'mode' has anything to
+     * switch between. */
+    printf("  Detected: ISO9660");
+    if (iso_has_rr)     printf(", Rock Ridge");
+    if (iso_has_joliet) printf(", Joliet (UCS level %d)", iso_joliet_level);
+    printf("\n  Active mode: %s\n", iso_mode_name(iso_get_mode()));
 }
 
 // Unmounts the image, if an image is mounted
@@ -314,6 +323,45 @@ static void rstat(int argc, char **argv, const char *image, const char *path) {
     }
 }
 
+// Show or change the active naming mode (Rock Ridge / Joliet / ISO9660)
+static void rmode(int argc, char **argv, const char *image, char *path) {
+    if (!is_open(image)) {
+        printf("No image is mounted. Use 'mount <iso>' first.\n");
+        return;
+    }
+
+    if (argc < 2) {
+        printf("Active mode: %s\n", iso_mode_name(iso_get_mode()));
+        printf("Available:   iso9660%s%s\n",
+               iso_has_rr     ? ", rock-ridge" : "",
+               iso_has_joliet ? ", joliet"     : "");
+        printf("Usage: mode <auto|rr|joliet|iso>\n");
+        return;
+    }
+
+    const char *m = argv[1];
+    iso_mode_t target;
+    if      (!strcmp(m, "auto"))                            target = ISO_MODE_AUTO;
+    else if (!strcmp(m, "rr") || !strcmp(m, "rock-ridge") ||
+             !strcmp(m, "rockridge"))                       target = ISO_MODE_ROCK_RIDGE;
+    else if (!strcmp(m, "joliet"))                          target = ISO_MODE_JOLIET;
+    else if (!strcmp(m, "iso") || !strcmp(m, "iso9660"))    target = ISO_MODE_ISO9660;
+    else {
+        printf("Unknown mode '%s'. Use auto|rr|joliet|iso.\n", m);
+        return;
+    }
+
+    if (iso_set_mode(target) < 0) {
+        printf("Mode '%s' is not available on this image.\n", m);
+        return;
+    }
+
+    /* The directory tree may have a different layout in each mode, so
+     * snap the working path back to the root to avoid stale lookups. */
+    strcpy(path, "/");
+    printf("Active mode: %s\n", iso_mode_name(iso_get_mode()));
+}
+
 static void rmkiso(int argc, char **argv) {
     if (argc < 3) {
         printf("Usage: mkiso <srcdir> <out.iso> [volume_id]\n");
@@ -381,6 +429,7 @@ int main(void) {
         else if (!strcmp(cmd, "cd")) rcd(argc, argv, image, path);
         else if (!strcmp(cmd, "cat")) rcat(argc, argv, image, path);
         else if (!strcmp(cmd, "stat")) rstat(argc, argv, image, path);
+        else if (!strcmp(cmd, "mode")) rmode(argc, argv, image, path);
         else if (!strcmp(cmd, "mkiso")) rmkiso(argc, argv);
         else printf("Unknown command: %s (type 'help')\n", cmd);
     }
