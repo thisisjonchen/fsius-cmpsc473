@@ -60,10 +60,14 @@ genisoimage -input-charset utf-8 -r -J -V  "TEST_FS" -o fs.iso test_fs/
 Then at the prompt:
 ```
 > mount fs.iso
+  Detected: ISO9660, Rock Ridge, Joliet (UCS level 3)
+  Active mode: rock-ridge
 (fs.iso) / > ls
 (fs.iso) / > cd documents
 (fs.iso) /documents > cat todo-list.txt
-(fs.iso) /documents > unmount
+(fs.iso) /documents > stat todo-list.txt
+(fs.iso) /documents > mode joliet     # switch naming tree at runtime
+(fs.iso) / > unmount
 > exit
 ```
 Type `help` for the full command list.
