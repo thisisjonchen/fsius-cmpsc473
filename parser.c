@@ -43,10 +43,7 @@ static int decode_joliet_name(const uint8_t *src, uint8_t len, char *out, size_t
 
     size_t oi = 0; // output index
 
-    /*
-     * Joliet File Identifier is UTF-16BE big-endian
-     * Replace non-ASCII chars with '?'
-     */
+    // Joliet File Identifier is UTF-16 Big Endian
     for (uint8_t i = 0; i + 1 < len; i += 2) {
         uint16_t ch = ((uint16_t)src[i] << 8) | src[i + 1];
 
@@ -179,10 +176,10 @@ int parse_pvd() {
 
     int found_pvd = 0;
 
-    iso_has_rr       = 0;
-    iso_has_joliet   = 0;
+    iso_has_rr = 0;
+    iso_has_joliet = 0;
     iso_joliet_level = 0;
-    memset(&cached_root_iso,    0, sizeof(cached_root_iso));
+    memset(&cached_root_iso, 0, sizeof(cached_root_iso));
     memset(&cached_root_joliet, 0, sizeof(cached_root_joliet));
 
     /*
