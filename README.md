@@ -62,7 +62,6 @@ Then at the prompt:
 > mount fs.iso
   Detected: ISO9660, Rock Ridge, Joliet (UCS level 3)
   Active mode: rock-ridge
-  # 'rr' combines RR ext with permissions + Joliet ext, 'joliet' is Joliet ext only, 'iso' is vanilla ISO9660
 (fs.iso) / > ls
 (fs.iso) / > cd documents
 (fs.iso) /documents > cat todo-list.txt
