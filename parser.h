@@ -72,7 +72,7 @@ iso_mode_t  iso_get_mode(void);
 /* Switch the active naming mode. ISO_MODE_AUTO picks the richest
  * available: RR > Joliet > ISO. Returns 0 on success, -1 if the
  * requested mode is not available on the current image. */
-int         iso_set_mode(iso_mode_t mode);
+int iso_set_mode(iso_mode_t mode);
 
 const char *iso_mode_name(iso_mode_t mode);
 

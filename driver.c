@@ -173,7 +173,7 @@ static void runmount(char *image, char *path) {
 // Prints the current working directory path
 static void rpwd(const char *image, const char *path) {
     if (!is_open(image)) {
-        printf("No image is mount\n");
+        printf("No image is mounted\n");
         return;
     }
     printf("%s\n", path);

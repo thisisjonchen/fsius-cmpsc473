@@ -43,7 +43,7 @@ static int decode_joliet_name(const uint8_t *src, uint8_t len, char *out, size_t
 
     size_t oi = 0; // output index
 
-    // Joliet File Identifier is UTF-16 Big Endian
+    // Joliet File Identifier is UCS-2, a subset of UTF-16 (and Big Endian)
     for (uint8_t i = 0; i + 1 < len; i += 2) {
         uint16_t ch = ((uint16_t)src[i] << 8) | src[i + 1];
 
@@ -62,10 +62,10 @@ static int decode_joliet_name(const uint8_t *src, uint8_t len, char *out, size_t
         // 3-byte UTF-8 char
         } else {
             if (oi + 3 >= outsize) break;
-            // byte format: 1110xxxx 110xxxxx 10xxxxxx
+            // byte format: 1110xxxx 10xxxxxx 10xxxxxx
             out[oi++] = (char)(0xE0 | (ch >> 12)); // extract top 4 bits, write first byte
             out[oi++] = (char)(0x80 | ((ch >> 6) & 0x3F)); // extract middle 6 bits, write 2nd byte
-            out[oi++] = (char)(0x80 | (ch & 0x3F)); // keep lowest 6bits
+            out[oi++] = (char)(0x80 | (ch & 0x3F)); // keep lowest 6 bits
         }
     }
 

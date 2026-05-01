@@ -25,7 +25,7 @@ This project implements an ISO9660-based file system that includes an ISO parser
 
 ## References
 - [OSDev: ISO 9660](https://wiki.osdev.org/ISO_9660)
-
+- [Microsoft Joliet Spec](https://pismotec.com/cfs/jolspec.html)
 ## Installation & Usage
 
 ### Prerequisites
