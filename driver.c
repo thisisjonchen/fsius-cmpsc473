@@ -49,7 +49,7 @@ static void mode_string(uint32_t mode, int is_dir_fallback, char out[11]) {
         case 0010000: t = 'p'; break;        /* S_IFIFO  */
         case 0140000: t = 's'; break;        /* S_IFSOCK */
         case 0100000: t = '-'; break;        /* S_IFREG  */
-        default:      t = is_dir_fallback ? 'd' : '-'; break;
+        default: t = is_dir_fallback ? 'd' : '-'; break;
     }
     out[0] = t;
     out[1] = (mode & 0400) ? 'r' : '-';
@@ -70,13 +70,13 @@ static void mode_string(uint32_t mode, int is_dir_fallback, char out[11]) {
 static void user_name(uint32_t uid, char *out, size_t outsize) {
     struct passwd *pw = getpwuid((uid_t)uid);
     if (pw && pw->pw_name) snprintf(out, outsize, "%s", pw->pw_name);
-    else                   snprintf(out, outsize, "%u", uid);
+    else snprintf(out, outsize, "%u", uid);
 }
 
 static void group_name(uint32_t gid, char *out, size_t outsize) {
     struct group *gr = getgrgid((gid_t)gid);
     if (gr && gr->gr_name) snprintf(out, outsize, "%s", gr->gr_name);
-    else                   snprintf(out, outsize, "%u", gid);
+    else snprintf(out, outsize, "%u", gid);
 }
 
 static void print_entries(const char *path, dir_entry_t *entries, int count) {
@@ -152,8 +152,8 @@ static void rmount(int argc, char **argv, char *image, char *path) {
     /* Report which naming extensions the image carries and which one
      * we picked. Helps the user know whether 'mode' has anything to
      * switch between. */
-    printf("  Detected: ISO9660");
-    if (iso_has_rr)     printf(", Rock Ridge");
+    printf("Detected: ISO9660");
+    if (iso_has_rr) printf(", Rock Ridge");
     if (iso_has_joliet) printf(", Joliet (UCS level %d)", iso_joliet_level);
     printf("\n  Active mode: %s\n", iso_mode_name(iso_get_mode()));
 }
@@ -341,11 +341,10 @@ static void rmode(int argc, char **argv, const char *image, char *path) {
 
     const char *m = argv[1];
     iso_mode_t target;
-    if      (!strcmp(m, "auto"))                            target = ISO_MODE_AUTO;
-    else if (!strcmp(m, "rr") || !strcmp(m, "rock-ridge") ||
-             !strcmp(m, "rockridge"))                       target = ISO_MODE_ROCK_RIDGE;
-    else if (!strcmp(m, "joliet"))                          target = ISO_MODE_JOLIET;
-    else if (!strcmp(m, "iso") || !strcmp(m, "iso9660"))    target = ISO_MODE_ISO9660;
+    if (!strcmp(m, "auto")) target = ISO_MODE_AUTO;
+    else if (!strcmp(m, "rr") || !strcmp(m, "rock-ridge") || !strcmp(m, "rockridge")) target = ISO_MODE_ROCK_RIDGE;
+    else if (!strcmp(m, "joliet")) target = ISO_MODE_JOLIET;
+    else if (!strcmp(m, "iso") || !strcmp(m, "iso9660")) target = ISO_MODE_ISO9660;
     else {
         printf("Unknown mode '%s'. Use auto|rr|joliet|iso.\n", m);
         return;

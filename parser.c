@@ -314,8 +314,7 @@ int parse_dir_record(const uint8_t *data, uint32_t offset,
 
     /* Joliet records are UCS-2BE; RR/ISO records are ASCII. The "."/".."
      * self-records (length-1 name 0x00/0x01) are always raw bytes. */
-    int is_dotdot = (file_id_len == 1 &&
-                     (rec[33] == 0x00 || rec[33] == 0x01));
+    int is_dotdot = (file_id_len == 1 && (rec[33] == 0x00 || rec[33] == 0x01));
 
     if (current_mode == ISO_MODE_JOLIET && !is_dotdot) {
         decode_joliet_name(rec + 33, file_id_len, out_record->name, sizeof(out_record->name));
@@ -727,20 +726,19 @@ const char *iso_mode_name(iso_mode_t mode) {
 
 int iso_set_mode(iso_mode_t mode) {
     if (mode == ISO_MODE_AUTO) {
-        if      (iso_has_rr)     mode = ISO_MODE_ROCK_RIDGE;
+        if (iso_has_rr) mode = ISO_MODE_ROCK_RIDGE;
         else if (iso_has_joliet) mode = ISO_MODE_JOLIET;
-        else                     mode = ISO_MODE_ISO9660;
+        else mode = ISO_MODE_ISO9660;
     }
 
     /* Reject modes that aren't actually present on the current image. */
-    if (mode == ISO_MODE_ROCK_RIDGE && !iso_has_rr)     return -1;
-    if (mode == ISO_MODE_JOLIET     && !iso_has_joliet) return -1;
+    if (mode == ISO_MODE_ROCK_RIDGE && !iso_has_rr) return -1;
+    if (mode == ISO_MODE_JOLIET && !iso_has_joliet) return -1;
 
     /* Joliet swaps to the SVD root; RR and ISO both use the PVD root.
      * Rock Ridge mode "decorates" PVD records via the SUSP walk, it
      * doesn't have its own directory tree. */
-    pvd.root_record = (mode == ISO_MODE_JOLIET) ? cached_root_joliet
-                                                : cached_root_iso;
+    pvd.root_record = (mode == ISO_MODE_JOLIET) ? cached_root_joliet : cached_root_iso;
     current_mode = mode;
     return 0;
 }
